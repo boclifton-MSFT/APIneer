@@ -1,0 +1,9 @@
+{
+  "casting_policy_version": "1.1",
+  "allowlist_universes": [
+    "Video Game Protagonists (Non-Nintendo)"
+  ],
+  "universe_capacity": {
+    "Video Game Protagonists (Non-Nintendo)": 25
+  }
+}

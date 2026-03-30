@@ -1,0 +1,44 @@
+{
+  "agents": [
+    {
+      "persistent_name": "Geralt",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "Lead",
+      "created_at": "2026-03-30T21:24:59Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Kratos",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "Frontend Dev",
+      "created_at": "2026-03-30T21:24:59Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Marcus",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "Backend Dev",
+      "created_at": "2026-03-30T21:24:59Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Freeman",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "Tester",
+      "created_at": "2026-03-30T21:24:59Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Payne",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "Security Specialist",
+      "created_at": "2026-03-30T21:41:04Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "assignments": [
+    {
+      "assignment_id": "apineer-2026-03-30",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "created_at": "2026-03-30T21:24:59Z",
+      "agents": [
+        { "name": "Geralt", "role": "Lead", "source": "The Witcher" },
+        { "name": "Kratos", "role": "Frontend Dev", "source": "God of War" },
+        { "name": "Marcus", "role": "Backend Dev", "source": "Borderlands" },
+        { "name": "Freeman", "role": "Tester", "source": "Half-Life" },
+        { "name": "Payne", "role": "Security Specialist", "source": "Max Payne" }
+      ]
+    }
+  ]
+}
