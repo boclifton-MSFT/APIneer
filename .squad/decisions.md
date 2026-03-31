@@ -215,6 +215,12 @@ All tests passing. Phase 1-8 complete.
 - Invalid auth config JSON → **400 Bad Request**  
 **Impact:** Frontend (Kratos) can now send `authConfig` as JSON string in request create/update payloads. The send button will automatically apply auth. Collection-level auth is inherited by requests that don't override it. Tests (Freeman): 10 new integration tests cover the auth-proxy flow. All 391 tests pass. Security (Payne): Auth secrets still stored as JSON strings in SQLite — encryption at rest (P5-001) is a separate concern tracked in Phase 1.5.
 
+### Form Data Serialization Format (2026-03-31)
+**By:** Kratos (Frontend Dev)  
+**Decision:** Form data in BodyEditor uses `application/x-www-form-urlencoded` serialization (`key1=value1&key2=value2`) as the `modelValue` string transport format. Internal state is an array of `{ key: string, value: string }` objects with bidirectional sync using the same `suppressSync` flag pattern established by QueryParamsEditor.  
+**Rationale:** Matches the HTTP standard for `application/x-www-form-urlencoded` content type. Backend can use the serialized string directly as request body. Consistent with QueryParamsEditor's manual encoding approach. Handles special characters, `+` as space, and edge cases.  
+**Impact:** Future multipart/form-data support (file uploads) will need a different approach. The `modelValue` string contract remains unchanged — all body modes emit a plain string.
+
 ## Governance
 
 - All meaningful changes require team consensus

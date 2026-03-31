@@ -9,6 +9,14 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2025-07-18: CollectionSidebar & CollectionTreeFolder Visual Polish (24/24 tests GREEN)
+- **Problem:** Sidebar tree was flat, unstyled text with no visual hierarchy — "GETUntitled Request" smushed together, no icons, no hover/active states, no separators.
+- **CollectionSidebar.vue changes:** Added `<UIcon>` for folder + chevron icons in collection headers. Added `:class="'method-' + request.method.toLowerCase()"` binding to method badges for color coding. Full scoped CSS: collection-node separators, collection-header flex layout with hover, collection-count pill badge, request-item indent + hover + active left-border accent, method-badge monospace/color-coded (GET=green, POST=blue, PUT=orange, PATCH=purple, DELETE=red), request-name truncation, sidebar-search focus ring, empty-state centered layout.
+- **CollectionTreeFolder.vue changes:** Matching method-badge color class binding. Matching scoped CSS for folder-header, folder-icon, folder-name, folder-content indent, request-item, method-badge colors, request-name truncation.
+- **Dark mode:** All colors use CSS variables (`--ui-text`, `--ui-text-muted`, `--ui-text-dimmed`, `--ui-border`, `--color-primary-500`) with fallbacks. Hover/active backgrounds use `rgba()` with neutral opacity that works in both light and dark modes.
+- **Pattern:** `rgba(128, 128, 128, 0.08)` is a reliable hover background that works in both light and dark modes without needing color-mode-specific rules.
+- **Tests:** All 11 CollectionSidebar + 13 CollectionTree tests pass. UIcon renders as stub in plain `mount()` tests (no Nuxt context) without breaking text/class assertions.
+
 ### 2026-03-30: Phase 3 & 4 UI — Collections & Environments (GREEN, 21/21 tests)
 - **Collections (13 tests):** `CollectionTree.vue` (recursive folder rendering, collapse/expand, drag handles, select/move events) + `CollectionTreeFolder.vue` (recursive child folders, nested requests, context menu stub)
 - **Environments (8 tests):** `EnvironmentSelector.vue` (dropdown for active environment, list all, dispatch `activateEnvironment`, disabled when no environments)
@@ -230,4 +238,14 @@
 - **Pattern:** JSON string transport — consistent with headers pattern, defensive parsing prevents crashes
 - **Tests:** 20 frontend tests pass — component unit tests + RequestBuilder integration tests
 - **Status:** AuthEditor fully wired, auth config flowing through API pipeline to backend
+
+### 2025-07-19 — Form Data Editor in BodyEditor (GREEN, 18/18 tests)
+- **Component modified:** `app/components/request-builder/BodyEditor.vue` — added form-data key-value table editor
+- **Features:** Table with Key/Value/Actions columns, Add Field button, remove (✕) per row, data-testid attributes (`formdata-key-input`, `formdata-value-input`, `remove-formdata`, `add-formdata`, `formdata-table`)
+- **Serialization:** URL-encoded format (`key1=value1&key2=value2`) via `encodeURIComponent`/`decodeURIComponent`. Handles `+` as space, empty strings, single pairs, encoded special characters
+- **State management:** Internal `formDataEntries` ref (array of `{key, value}`), `suppressFormDataSync` flag to prevent recursive watch loops (same pattern as QueryParamsEditor)
+- **Bidirectional sync:** `watch(modelValue)` parses URL-encoded string → entries when bodyType is form-data. `emitFormDataUpdate()` serializes entries → URL-encoded string and emits `update:modelValue`
+- **Mode isolation:** Form-data table only renders when `bodyType === 'form-data'`. Textarea only renders for raw/json. None mode shows neither. All existing modes unchanged.
+- **Styling:** Scoped CSS matching HeadersEditor pattern — same table layout, input sizing, button styling, `var(--ui-*)` CSS variables
+- **Tests:** All 18 pass (9 original + 9 new form-data tests). Zero regressions.
 

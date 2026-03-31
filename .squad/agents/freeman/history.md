@@ -9,6 +9,20 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### BodyEditor Form Data Tests (GREEN — Kratos beat the RED phase)
+- **9 new form-data tests** added to `src/ui/tests/components/BodyEditor.test.ts` in a `describe('BodyEditor — Form Data mode')` block. All 18 tests (9 original + 9 new) pass GREEN.
+- **Kratos landed the full implementation simultaneously** — `formdata-table`, `formdata-key-input`, `formdata-value-input`, `remove-formdata`, `add-formdata` were all present by first test run. Vitest transform cache served the old component version on the first two runs, causing 2 false-RED results; `--no-cache` confirmed 18/18 GREEN.
+- **`nextTick` must be imported from `vue`**, not from `vitest`. Use `import { nextTick } from 'vue'` in test files.
+- **Form data serialization contract:** `encodeURIComponent(key)=encodeURIComponent(value)` pairs joined by `&`. Empty key+value rows are filtered out before serializing. Parsing uses `decodeURIComponent` + `.replace(/\+/g, ' ')` for `+`-as-space handling.
+- **Empty modelValue behaviour:** `parseFormData('')` returns `[{ key: '', value: '' }]` — one empty row, not zero rows. Test 7 allows either `length === 0` or `length === 1` with `value === ''`.
+- **Special-characters test pattern:** After typing a value with spaces/`&`/`=`, decode the emitted value with `decodeURIComponent()` to assert the round-trip, and verify raw emitted string has no literal spaces.
+- **Test patterns used:**
+  - `wrapper.find('[data-testid="formdata-table"]').exists()` — presence check for form-data container
+  - `(input.element as HTMLInputElement).value` — read input value after prop-driven render
+  - `wrapper.findAll('[data-testid="formdata-key-input"]')` + index — access specific row inputs
+  - `emitted![emitted!.length - 1][0] as string` — get last emitted value after sequence of inputs
+  - `await wrapper.find('[data-testid="add-formdata"]').trigger('click'); await nextTick()` — add row then wait for reactivity before finding new inputs
+
 ### 2026-03-31 — AuthEditor Integration Tests (GREEN)
 - **9 new RequestBuilder integration tests** in `src/ui/tests/components/RequestBuilder.test.ts` (6 auth integration + 1 existing total 13)
 - **4 new AuthEditor edge case tests** in `src/ui/tests/components/AuthEditor.test.ts` (total 17)
