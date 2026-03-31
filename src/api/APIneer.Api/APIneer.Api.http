@@ -1,0 +1,6 @@
+@APIneer.Api_HostAddress = http://localhost:5174
+
+GET {{APIneer.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

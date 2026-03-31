@@ -5,9 +5,113 @@
 - **Stack:** .NET 10 (backend) + Nuxt UI (frontend)
 - **Created:** 2026-03-30
 
+# Project Context
+
+- **Owner:** boclifton-MSFT
+- **Project:** APIneer — a locally running API platform (Postman alternative). Desktop app for building, testing, and managing API requests with collections, environments, and response visualization. Handles credentials (API keys, OAuth tokens, basic auth) so security is critical.
+- **Stack:** .NET 10 (backend) + Nuxt UI (frontend)
+- **Created:** 2026-03-30
+
 ## Learnings
 
-### Phase 4.4: Credential Security Implementation (2026-03-31)
+### Phase 5.4: Auth Engine Security Review (2026-03-31)
+
+**Objective:** Review the fully implemented auth engine for security vulnerabilities.
+
+**Scope:** 
+- `Auth/AuthHandler.cs` — Auth credential injection (API key, bearer, basic, OAuth2)
+- `Auth/AuthConfig.cs` — Auth configuration model
+- `Services/CredentialProtector.cs` — DPAPI encryption (already reviewed in Phase 4.4)
+- `Program.cs` — Auth integration with /send endpoint
+
+**Findings:** 🔴 **9 CRITICAL FINDINGS** (3 HIGH + 4 MEDIUM + 2 LOW/INFO)
+
+**Critical Issues Identified:**
+1. **P5-001 (HIGH):** AuthConfig serialization exposes all secrets plaintext in SQLite
+   - AuthConfig contains unencrypted properties (Token, Password, ClientSecret, AccessToken, KeyValue)
+   - Serialized to JSON string in ApiRequest.AuthConfig column
+   - DPAPI encryption layer completely bypassed
+   - **Violates Invariant 3 (Encryption at Rest)**
+
+2. **P5-002 (HIGH):** OAuth2 tokens cached plaintext in memory
+   - AccessToken stored in mutable AuthConfig properties
+   - If AuthConfig persisted/logged, cached token exposed
+   - **Violates Invariant 3, Invariant 6**
+
+3. **P5-003 (HIGH):** Client secret sent in plaintext to token endpoint
+   - No HTTPS validation on token endpoint URL
+   - Client credentials sent in plain form body
+   - Vulnerable to MITM if endpoint is HTTP
+   - **Critical risk for OAuth2 flow**
+
+4. **P5-004 (MEDIUM):** API key in query string not redacted in logs
+   - Query parameters appended to request URL
+   - Full URL logged in RequestHistory without sanitization
+   - **Violates Invariant 6 (No plaintext in logs)**
+
+5. **P5-005 (MEDIUM):** OAuth2 error messages echo server responses
+   - Exception messages contain token endpoint errors
+   - Information disclosure of auth server details
+
+6. **P5-006 (MEDIUM):** Auth type validation too permissive
+   - Null type triggers NullReferenceException (not caught)
+   - Unknown types throw but not logged
+
+7. **P5-007 (MEDIUM):** No HTTPS enforcement for OAuth2 endpoint
+   - HttpClient configuration lacks certificate validation
+   - Token endpoint could be HTTP without error
+
+8. **P5-008 (LOW):** AccessToken mutability
+   - Token can be modified after caching
+   - No versioning or auditing
+
+9. **P5-009 (INFO):** No audit logging for token operations
+   - No visibility into token refresh lifecycle
+
+**Blockers for Phase 5.5:**
+- ⛔ **P5-BLOCKER-1:** AuthConfig must be encrypted before request execution
+- ⛔ **P5-BLOCKER-2:** RequestHistory must be sanitized before storage
+
+**Positive Findings:**
+- ✅ CredentialProtector.cs DPAPI implementation correct
+- ✅ AuthHandler.ApplyBearer() token injection correct
+- ✅ AuthHandler.ResolveAuth() inheritance logic sound
+- ✅ AuthHandler.ApplyBasic() Base64 encoding correct
+
+**Deliverables:**
+- `.squad/decisions/inbox/payne-auth-security-review.md` — Full security report with 9 findings, blockers, test cases, and fix recommendations
+- `tests/APIneer.Api.Tests/Security/AuthSecurityTests.cs` — 9 security regression tests (currently skipped pending fixes):
+  - TC5.1: Bearer token not stored plaintext
+  - TC5.1 (API Key variant): API key not stored plaintext  
+  - TC5.1 (Basic variant): Password not stored plaintext
+  - TC5.2: OAuth2 token not cached in database
+  - TC5.4: OAuth2 HTTPS enforcement
+  - TC5.3: API key query parameter redacted
+  - TC5.5: Auth type null validation
+  - Plus invalid type rejection test
+
+**Test Results:**
+- ✅ AuthSecurityTests.cs compiles (with 1 pre-existing ProxyEngine test compilation issue unrelated to auth review)
+- ✅ 9 tests written and properly skipped pending implementation fixes
+- ✅ All tests are regression tests targeting security invariants
+
+**Risk Assessment:**
+- **Overall Risk Level:** 🔴 **CRITICAL**
+- **Immediate Threat:** Plaintext secrets in SQLite database
+- **Attack Surface:** Local file access to SQLite + auth config inspection
+- **Compliance Impact:** GDPR (credential exposure), SOC 2 (encryption at rest)
+
+**Next Steps (Phase 5.5):**
+1. Refactor AuthConfig to separate concerns:
+   - Move all secret properties to encrypted storage
+   - Create EncryptedAuthSecrets DTO with DPAPI layer
+2. Implement in-memory token cache (ConcurrentDictionary + SemaphoreSlim)
+3. Add request history sanitization (redact URLs, auth headers)
+4. Validate OAuth2 endpoints are HTTPS-only
+5. Fix auth type validation (explicit whitelist)
+6. Run security regression tests to verify fixes
+
+---
 
 **Objective:** Implement the Data Protection encryption layer for secrets per security-architecture.md
 
@@ -84,6 +188,110 @@
 - Program.cs updated (3 endpoints modified, 1 service configured)
 - Security/CredentialProtectorTests.cs (154 lines, 10 tests)
 - Security/EncryptedSecretVariableTests.cs (289 lines, 7 tests)
+
+---
+
+### Phase 8.3: Final Security Audit (2026-03-31)
+
+**Objective:** Comprehensive final security review of entire `src/api/` codebase before v1.0 release.
+
+**Scope:** All endpoints, proxy engine, auth engine, import/export, WebSocket, dependency audit, secrets scan, data flow analysis.
+
+**Methodology:**
+- Dependency audit: `dotnet list package --vulnerable` — Zero CVEs
+- Secrets scan: All files scanned for hardcoded credentials — None found
+- Vulnerability deep scan: Injection, auth, data handling, cryptography, business logic
+- Cross-file data flow: Traced credential lifecycle from input → storage → resolution → injection → response
+- Self-verification: Reassessed all previous findings (P2-001...P5-009)
+
+**Findings Summary:**
+
+🔴 **2 CRITICAL + 2 HIGH + 2 MEDIUM = 6 UNRESOLVED SECURITY BLOCKERS**
+✅ **3 findings FIXED since Phase 5.4** (P2-002, P5-006, partial P2-003)
+
+**Critical Findings (Release Blockers):**
+1. **P5-001 (CRITICAL):** AuthConfig secrets still plaintext in SQLite — must encrypt before auth integration
+2. **P5-002 (CRITICAL):** OAuth2 access tokens cached plaintext — must move to in-memory cache only
+
+**High Findings (Release Blockers):**
+3. **P8-001 (HIGH):** Request secrets (headers, body, auth) stored plaintext in RequestHistory — violates Invariant 6. Users sharing exports leak credentials.
+4. **P8-002 (HIGH):** Auth secrets remain mutable public fields, serializable to JSON, persisted to SQLite — violates Invariants 1, 3, 6
+
+**Medium Findings:**
+5. **P8-003 (MEDIUM):** Verbose exception messages leak implementation details (import endpoints, ProxyEngine, WebSocket) — follow-up on P2-003
+6. **P8-004 (MEDIUM NEW):** WebSocketProxy singleton stores full message history in memory, exposed to all callers via `/api/ws/messages` and `/api/ws/status` — no access control or per-session scoping
+
+**Fixed Findings:**
+- ✅ **P2-002:** EnvironmentVariable secrets now encrypted via DPAPI, masked on read (Phase 4.4)
+- ✅ **P5-006:** Null auth type handling fixed — no null dereference (Phase 5.5)
+
+**Still Open:**
+- 🔴 **P2-001:** RequestHistory plaintext (related to P8-001)
+- 🔴 **P2-003:** Verbose errors (partial — some fixed, import/export still leaking)
+- 🔴 **P5-003:** OAuth2 token endpoint HTTPS not enforced
+- 🔴 **P5-004:** API key query string not redacted (related to P8-001)
+- 🔴 **P5-005:** OAuth2 error messages expose server details
+- 🔴 **P5-007:** No HTTPS validation on OAuth2 endpoint
+- 🔴 **P5-008:** AccessToken mutable/public set (secondary to P5-002)
+- ⚪ **P5-009:** No audit logging (post-release enhancement)
+
+**Data Flow Analysis:**
+
+Request lifecycle shows plaintext leakage at every stage:
+```
+User Input (plaintext) 
+  → ApiRequest.Headers/Body/AuthConfig (plaintext) 
+  → SQLite storage (plaintext) 
+  → RequestHistory (plaintext) 
+  → GET /api/requests/{id}/history response (plaintext) ← INVARIANT 6 VIOLATION
+  → User exports collection (plaintext) ← CREDENTIALS LEAKED
+```
+
+EnvironmentVariable secrets are correctly encrypted via DPAPI, but request-level secrets (headers, auth) bypass encryption entirely.
+
+**Vulnerability Categories:**
+- ✅ No SQL injection (EF Core parameterized)
+- ✅ No XSS (JSON responses only)
+- ✅ No header injection
+- 🔴 Auth secrets plaintext (P5-001, P5-002, P8-002)
+- 🔴 Data handling plaintext (P8-001)
+- 🔴 Info disclosure via errors (P8-003)
+- 🔴 Access control gaps (P8-004)
+
+**Security Invariants Compliance:**
+- Invariant 1 (No raw secrets in responses): 🔴 FAIL — RequestHistory returns plaintext
+- Invariant 2 (Masked in UI): ✅ PASS — EnvironmentVariable masked
+- Invariant 3 (Encrypted at rest): 🔴 PARTIAL — Variables encrypted, AuthConfig/RequestHistory plaintext
+- Invariant 4 (Headers stripped): ⏳ UNKNOWN — Auth integration deferred
+- Invariant 5 (Collections sanitized): ⏳ UNKNOWN — Not implemented
+- Invariant 6 (No plaintext in logs): 🔴 FAIL — RequestHistory stores plaintext
+- Invariant 7 (Scoping respected): ✅ PASS — Variables correctly scoped
+
+**Release Readiness:** 🔴 **NOT READY FOR v1.0**
+
+All 6 blockers must be fixed before release:
+1. Encrypt request secrets before storage (P8-001)
+2. Encrypt auth secrets, remove from schema (P8-002)
+3. Enforce OAuth2 HTTPS (P5-003)
+4. Scope WebSocket state per session (P8-004)
+5. Redact error messages (P8-003)
+6. Implement request history sanitization (P2-001)
+
+**Estimated Remediation:** 9-10 days
+
+**Deliverables:**
+- `docs/security-audit-final.md` — Full report (19.5KB) with executive summary, detailed findings by severity, status of all previous findings, data flow analysis, invariants compliance, release checklist, recommendations, test coverage gaps
+
+**Key Decisions:**
+- No SSRF protection is intentional (tool designed for localhost testing)
+- Secrets in imports/exports should be redacted when generating code
+- WebSocket feature requires authentication gate if shipping
+- Auth engine integration must not proceed without P5-001, P5-002 fixes
+- Error messages should never echo user input or show implementation details
+
+**Architecture Assessment:** ✅ Sound — threat model, invariants, DPAPI implementation correct
+**Implementation Status:** 🔴 Vulnerable — Request/auth secret handling gaps critical
+**Overall Risk:** 🔴 CRITICAL — Not suitable for production release in current state
 
 ---
 

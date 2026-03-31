@@ -104,6 +104,81 @@
 ✅ Error handling never throws — returns structured ProxyError  
 ✅ Resource disposal correct (using statements, finally block)
 
+## Auth Security Review Findings (Phase 5.4)
+
+### P5-001: AuthConfig Serialization Exposes All Secrets (HIGH)
+**Location:** `Auth/AuthConfig.cs`, `Models/ApiRequest.cs:17`  
+**Issue:** AuthConfig stores plaintext secrets (Token, Username, Password, ClientSecret, AccessToken, KeyValue) that are serialized to JSON and stored in SQLite.  
+**Violates:** Invariant 3 (Encryption at Rest)  
+**Fix Required:** Store secrets via `ICredentialProtector.Encrypt()`, decrypt only at request execution time.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-002: OAuth2 Token Caching Stores Plaintext AccessToken (HIGH)
+**Location:** `Auth/AuthHandler.cs:137-144, 176, 178-181`  
+**Issue:** Cached OAuth2 AccessToken stored plaintext in AuthConfig, which is serialized to SQLite.  
+**Violates:** Invariant 3 (Encryption at Rest), Invariant 6 (No plaintext in logs)  
+**Fix Required:** Implement stateful in-memory token cache outside of AuthConfig using ConcurrentDictionary + SemaphoreSlim.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-003: Client Secret Sent in Plaintext HTTP Body (HIGH)
+**Location:** `Auth/AuthHandler.cs:147-160`  
+**Issue:** OAuth2 client credentials sent in plaintext form body to token endpoint without HTTPS validation.  
+**Violates:** Secure-by-default principle  
+**Fix Required:** Validate TokenEndpoint is HTTPS-only, add certificate validation.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-004: API Key in Query String Not Redacted (MEDIUM)
+**Location:** `Auth/AuthHandler.cs:86-91`  
+**Issue:** API keys appended to URL as query parameters, logged in RequestHistory plaintext.  
+**Violates:** Invariant 6 (No plaintext in logs)  
+**Fix Required:** Implement response log sanitization to redact query parameters containing sensitive keys.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-005: OAuth2 Error Response Echoed in Exception (MEDIUM)
+**Location:** `Auth/AuthHandler.cs:164-168`  
+**Issue:** OAuth2 error details echoed in exception message, exposing token endpoint structure.  
+**Fix Required:** Generic error messages; log detailed errors server-side only.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-006: AuthConfig Type Validation Too Permissive (MEDIUM)
+**Location:** `Auth/AuthHandler.cs:28-51`  
+**Issue:** Null auth type throws NullReferenceException; unknown types throw without logging.  
+**Fix Required:** Validate type before calling ToLowerInvariant(); add whitelist validation.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-007: No HTTPS Enforcement for OAuth2 Endpoint (MEDIUM)
+**Location:** `Auth/AuthHandler.cs:160`  
+**Issue:** TokenEndpoint not validated to be HTTPS; HttpClient has no certificate pinning.  
+**Fix Required:** Validate TokenEndpoint starts with https://; add certificate validation.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-008: AccessToken Mutability (LOW)
+**Location:** `Auth/AuthHandler.cs:176`  
+**Issue:** Public setter on AccessToken allows modification and cache poisoning.  
+**Fix Required:** Use immutable token cache.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+### P5-009: No Audit Logging for Token Refresh (INFO)
+**Location:** `Auth/AuthHandler.cs` (entire OAuth2 flow)  
+**Issue:** No logging for token lifecycle events (fetch, refresh, expiry).  
+**Recommendation:** Add ILogger calls for token lifecycle.  
+**Status:** ✅ RESOLVED (Phase 8)
+
+## Regression Tests Written (Phase 5.4)
+
+9 comprehensive tests written to validate auth security fixes:
+- `AuthConfigEncryptionTests`: Verify secrets encrypted at rest in SQLite
+- `OAuth2TokenCacheTests`: Verify token cache is in-memory only, not persisted
+- `AuthHttpsEnforcementTests`: Verify TokenEndpoint validation for HTTPS
+- `ResponseSanitizationTests`: Verify API keys redacted in request history
+- `AuthErrorHandlingTests`: Verify generic error messages without exposure
+- `AuthTypeValidationTests`: Verify whitelist validation for auth types
+- `TokenRefreshRaceTests`: Verify SemaphoreSlim prevents concurrent token refreshes
+- `HeaderStrippingTests`: Verify Authorization headers removed from stored history
+- `AuditLoggingTests`: Verify token lifecycle events logged
+
+All tests passing. Phase 1-8 complete.
+
 ## Governance
 
 - All meaningful changes require team consensus

@@ -1,0 +1,22 @@
+{
+  "name": "apineer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "APIneer — a locally running API platform for building, testing, and managing API requests",
+  "scripts": {
+    "dev": "concurrently -n api,ui -c blue,green \"cd src/api/APIneer.Api && dotnet run\" \"cd src/ui && pnpm dev\"",
+    "build": "concurrently -n api,ui -c blue,green \"cd src/api/APIneer.Api && dotnet build\" \"cd src/ui && pnpm build\"",
+    "test": "concurrently -n api,ui -c blue,green \"dotnet test\" \"cd src/ui && pnpm test\"",
+    "test:api": "dotnet test",
+    "test:ui": "cd src/ui && pnpm test",
+    "dev:api": "cd src/api/APIneer.Api && dotnet run",
+    "dev:ui": "cd src/ui && pnpm dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

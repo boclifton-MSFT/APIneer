@@ -208,3 +208,34 @@
 - **Key fix:** Disconnect endpoint always calls `DisconnectAsync()` regardless of state (not just when Open) — needed to reset from Error state
 - **Endpoint placement fix:** All WebSocket routes must be registered before `app.Run()` (initial placement after helper functions caused 404s)
 - **Zero regressions:** 312/312 non-ImportExport tests pass (ImportExport failures pre-existing)
+
+### 2026-03-31: Phase 8.2 — Performance Optimization
+- **Response compression:** Added gzip + brotli via `AddResponseCompression` middleware (`BrotliCompressionProvider`, `GzipCompressionProvider`) with `CompressionLevel.Fastest`; `UseResponseCompression()` added before `UseCors()`
+- **Pagination added to list endpoints:**
+  - `GET /api/collections` — now returns `{ items, page, pageSize, totalCount }` with default pageSize=50, max=100
+  - `GET /api/requests` — same paginated shape, ordered by `UpdatedAt` descending
+  - `GET /api/requests/{id}/history` — same paginated shape, ordered by `ExecutedAt` descending (was flat array)
+  - `GET /api/history` already had pagination — no change needed
+- **AsNoTracking added to all read-only queries:** `GET /api/collections`, `GET /api/collections/{id}`, `GET /api/requests`, `GET /api/requests/{id}`, `GET /api/requests/{id}/history`, `GET /api/history`, `GET /api/environments`, `GET /api/environments/{id}`, `GET /api/requests/{id}/assertions`, `GET /api/collections/{id}/export`
+- **DB indexes (migration `AddPerformanceIndexes`):**
+  - `IX_RequestHistory_ExecutedAt` — optimizes history ordering/filtering
+  - `IX_RequestHistory_RequestId` — optimizes per-request history lookups
+  - `IX_RequestHistory_ResponseStatus` — optimizes status filtering
+  - `IX_ApiRequest_CollectionId` — renamed from EF convention name
+  - `IX_ApiRequest_FolderId` — renamed from EF convention name
+  - `IX_Environment_WorkspaceId_IsActive` — composite index for active environment lookups
+- **Response size limits:** ProxyEngine streams large responses (>1MB) to limit memory allocation; reads up to `LargeResponseThresholdBytes` chars for bodies exceeding threshold
+- **HttpClient pooling:** ProxyEngine now uses `IHttpClientFactory` (primary constructor injection) with named client `ProxyEngine`; `SocketsHttpHandler` configured with `PooledConnectionLifetime=5min`, `PooledConnectionIdleTimeout=2min`, `MaxConnectionsPerServer=20`, `EnableMultipleHttp2Connections=true`; eliminates socket exhaustion from per-request HttpClient/Handler creation
+- **ProxyEngine refactor:** Changed from `new HttpClient()`/`new HttpClientHandler()` per request to `IHttpClientFactory.CreateClient()`. Registered as `Transient` instead of `Singleton` since IHttpClientFactory manages pooling
+- **Test infrastructure:** Created `TestHttpClientFactory` for proxy tests (implements `IHttpClientFactory` with `AllowAutoRedirect=false`); updated all 6 proxy test files
+- **Updated existing tests:** `RequestCrudTests`, `CollectionCrudTests` updated to deserialize paginated response shape (`PaginatedRequests`, `PaginatedHistory`, `PaginatedCollections`)
+- **Performance tests (11 new):** `tests/APIneer.Api.Tests/Performance/PerformanceTests.cs`
+  - Large response handling (1MB+ body creation and retrieval within timeout)
+  - Rapid sequential request execution (10 sends) doesn't fail
+  - Rapid sequential creation (10 creates) doesn't fail
+  - History pagination with 50+ entries, page navigation, performance check
+  - Global history pagination efficiency with 25+ entries
+  - Collection duplication with 20 requests in reasonable time
+  - Collection list pagination (15 collections, page navigation)
+  - Collection deletion with 15 requests + history in reasonable time
+- **Test results:** 380 passed, 0 failed, 8 skipped (pre-existing auth security skips)

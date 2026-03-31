@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/api/">
+    <Project Path="src/api/APIneer.Api/APIneer.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/APIneer.Api.Tests/APIneer.Api.Tests.csproj" />
+  </Folder>
+</Solution>
