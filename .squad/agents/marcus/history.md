@@ -9,6 +9,42 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2026-03-30: Phase 3.2 — Collections API Implementation (GREEN)
+- **Endpoints added:** 11 new/enhanced routes for collections, folders, reorder, duplicate, and move
+- **Collection CRUD:** POST/GET/PUT/DELETE `/api/collections` with full validation (name required), timestamps, Location header
+- **GET detail:** `GET /api/collections/{id}` returns nested folder tree + root-level requests; recursive `MapFolderTree` builds arbitrary-depth hierarchy
+- **Folder CRUD:** `POST /api/collections/{id}/folders` (auto SortOrder via MAX+1), `DELETE /api/collections/{id}/folders/{folderId}` with manual cascade (descendant folders + their requests + history)
+- **Move:** `PATCH /api/requests/{id}/move` reassigns `folderId` (or null for root)
+- **Reorder:** `PATCH /api/collections/{id}/reorder` takes `itemIds[]` and sets SortOrder by position
+- **Duplicate:** `POST /api/collections/{id}/duplicate` deep-copies collection with "(Copy)" suffix; BFS folder traversal maps old→new IDs; preserves nested structure
+- **SortOrder:** Auto-assigned for both requests and folders (MAX+1 in scope); existing `POST /api/requests` updated
+- **MapToResponse:** Added `FolderId` to request response (needed for move verification)
+- **Cascade delete strategy:** Manual removal (history→requests→folders→collection) avoids issues with `DeleteBehavior.Restrict` on folder self-reference
+- **No migration needed:** All changes are endpoint logic; models/DbContext unchanged
+- **Tests:** All 41 collection tests pass (CRUD + folders + ordering + duplicate); 223/224 total (1 pre-existing CodeGeneration failure)
+
+### 2026-03-30: Phase 4.2 — Environments API Implementation (GREEN)
+- **Endpoints added to `Program.cs`:** 10 environment routes total
+  - `POST /api/environments` — create environment (201 Created with location header)
+  - `GET /api/environments` — list all environments with variables (secrets masked)
+  - `GET /api/environments/{id}` — get single environment with variables (secrets masked as `***masked***`)
+  - `PUT /api/environments/{id}` — update environment name
+  - `DELETE /api/environments/{id}` — delete environment (cascades variables via EF)
+  - `POST /api/environments/{id}/variables` — add variable with key, value, isSecret
+  - `GET /api/environments/{id}/variables/{varId}` — get single variable (secrets masked)
+  - `PUT /api/environments/{id}/variables/{varId}` — update variable key, value, isSecret
+  - `DELETE /api/environments/{id}/variables/{varId}` — remove variable
+  - `PUT /api/environments/{id}/activate` — set active (deactivates others in same workspace)
+  - `PUT /api/environments/{id}/deactivate` — deactivate environment
+  - `POST /api/environments/resolve` — resolve `{{var}}` placeholders using active environment
+- **Secret masking:** GET responses return `***masked***` for secret variable values; resolve endpoint uses real values for proxy execution
+- **Variable resolution:** Regex-based `{{key}}` replacement; supports escaped braces `\{\{` → `{{`, undefined vars left as-is, empty vars resolve to empty string
+- **Active environment:** Only one active per workspace; activating deactivates siblings; resolution only uses active environment's variables
+- **DTOs:** CreateEnvironmentDto, UpdateEnvironmentDto, CreateVariableDto, UpdateVariableDto, ResolveRequestDto
+- **Migration fix:** Added `AddAssertions` migration to resolve `PendingModelChangesWarning` caused by Assertion model added without migration
+- **Test results:** All 43 environment tests pass (0 failures, 0 regressions on environment tests)
+- **Key pattern:** Models (Environment, EnvironmentVariable) were already defined in Phase 1.1; only endpoints and resolution logic needed implementation
+
 ### 2026-03-30: Phase 1.1 — Backend Scaffolding Complete
 - **Solution:** `APIneer.slnx` (root) — .NET 10 uses `.slnx` format by default
 - **API project:** `src/api/APIneer.Api/` — Minimal API pattern, listens on `localhost:5000`
@@ -99,3 +135,27 @@
 - **Rule:** Secrets ONLY decrypted backend-side at request execution; frontend receives masked representation
 - **7 testable invariants:** Raw secrets never in responses, masked in UI, encrypted storage, header sanitization, collection sanitization, no plaintext in logs, scoping respected
 - **Location:** `docs/security-architecture.md`
+
+### 2026-03-30: Phase 3.2 Collections API — Full Implementation (GREEN, 41/41 tests)
+- **Collections CRUD:** POST/GET/PUT/DELETE `/api/collections` with full validation, timestamps, Location headers
+- **Folder Hierarchy:** `GET /api/collections/{id}` returns nested tree; recursive `MapFolderTree` function builds arbitrary-depth structure
+- **Folder Operations:** POST/DELETE folders with auto SortOrder; manual cascade delete (history→requests→folders→collection)
+- **Request Move:** `PATCH /api/requests/{id}/move` reassigns folder or to root
+- **Reorder:** `PATCH /api/collections/{id}/reorder` sets SortOrder by position
+- **Duplicate:** `POST /api/collections/{id}/duplicate` deep-copies with "(Copy)" suffix; BFS maps old→new IDs, preserves structure
+- **No model changes:** All endpoint logic; models/migrations unchanged
+
+### 2026-03-30: Phase 4.2 Environments API — Full Implementation (GREEN, 43/43 tests)
+- **Environment CRUD:** POST/GET/PUT/DELETE `/api/environments` with secret masking
+- **Variable Management:** Add/update/delete variables within environments; secrets displayed as `***masked***` in GET responses
+- **Activation:** `PUT /api/environments/{id}/activate` (deactivates others), `deactivate`
+- **Resolution:** `POST /api/environments/resolve` replaces `{{var}}` placeholders using active environment; supports escaped braces
+- **Key decision:** Only active environment used for variable resolution; ensures deterministic request execution
+- **Migration:** Added `AddAssertions` migration (Phase 7.1 model addition)
+
+### 2026-03-30: Phase 7.1 Advanced Features — Test Contracts (RED, 50 tests)
+- **History (16 tests):** `GET /api/history` with pagination (page, pageSize), filtering (requestId, method, status, dateRange). `DELETE /api/history` clears. DTOs: `PaginatedHistory`, `HistoryEntry` with request+response snapshots.
+- **Code Generation (18 tests):** `GET /api/requests/{id}/code?language=X` supports javascript-fetch, javascript-axios, python-requests, csharp-httpclient, curl. Generated code includes method, URL, headers, body. Invalid language→400.
+- **Assertions (16 tests):** `POST /api/requests/{id}/assertions` (types: status_equals, body_contains, header_exists). `GET /api/requests/{id}/assertions` lists. `POST /api/requests/{id}/test` executes and evaluates assertions.
+- **Status:** RED phase — 46 fail (expected, endpoints being implemented), 4 pass (coincidental 404 handlers)
+- **Note:** Test contracts fully specified; Marcus implements in GREEN phase

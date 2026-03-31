@@ -9,16 +9,12 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
-### 2025-07-16 — Phase 2.6: Request Builder UI Components
-- **Components created:** 5 Vue components in `app/components/request-builder/`:
-  - `MethodSelector.vue` — native `<select>` with 7 HTTP methods, color-coded via `method-{color}` CSS classes
-  - `UrlInput.vue` — text input with overlay highlighting for `{{variable}}` patterns (`.url-variable` class)
-  - `HeadersEditor.vue` — key-value `<table>` with add/remove rows, starts with one empty row, emits on every change
-  - `BodyEditor.vue` — custom tab buttons (None/Raw/JSON/Form Data) with textarea, JSON validation error display
-  - `RequestBuilder.vue` — composes all above + Send button (loading/disabled state) + Ctrl+Enter shortcut + section tabs (Params/Headers/Body/Auth)
-- **Key pattern:** Tests use `mount` from `@vue/test-utils` (not `mountSuspended`), so components use native HTML elements (select, table, textarea) rather than Nuxt UI wrapper components. Tests find elements via native selectors and `data-testid` attributes.
-- **Important:** `defineOptions({ name: 'ComponentName' })` is required in `<script setup>` components for `findComponent({ name: '...' })` to work in tests.
-- **All 41 tests pass** (5 test files, 41 individual test cases including parameterized `it.each` expansions).
+### 2026-03-30: Phase 3 & 4 UI — Collections & Environments (GREEN, 21/21 tests)
+- **Collections (13 tests):** `CollectionTree.vue` (recursive folder rendering, collapse/expand, drag handles, select/move events) + `CollectionTreeFolder.vue` (recursive child folders, nested requests, context menu stub)
+- **Environments (8 tests):** `EnvironmentSelector.vue` (dropdown for active environment, list all, dispatch `activateEnvironment`, disabled when no environments)
+- **Key patterns:** `mountSuspended` for async setup, `@nuxt/test-utils` environment: 'nuxt', MSW 2 API mocks, `data-testid` selectors
+- **State:** Pinia store integration for environment switching
+- **Test infrastructure:** All 21 tests pass, zero regressions
 
 ### 2025-07-16 — Phase 1.2: Frontend Scaffolding Complete
 - **Project location:** `src/ui/` — Nuxt 4.4.2 + Nuxt UI v4 (`@nuxt/ui 4.6.0`)
@@ -80,4 +76,21 @@
 - **ResponseTiming:** ms display, human-readable size (B/KB/MB)
 - **Nuxt auto-import caveat:** Path-prefixed subdir components; explicit imports needed in parent components in same subdir
 - **Clipboard mocking:** Object.defineProperty needed for happy-dom navigator.clipboard writable
+
+### 2025-07-17 — Phase 4.3: Environments UI (EnvironmentSelector)
+- **Component created:** `app/components/environments/EnvironmentSelector.vue` — native `<select>` dropdown with v-model support
+- **Props:** `environments` (array of `{id, name, isActive, workspaceId}`), `modelValue` (string, selected env id)
+- **Emits:** `update:modelValue` and `activate` on selection change, `manage` for opening environment editor
+- **Features:** "No Environment" option (value `""`) to deselect, `[data-testid="active-indicator"]` showing current environment name, `[data-testid="no-environments"]` empty state when environments array is empty
+- **Key pattern:** Uses native `<select>` + `<option>` elements (not Nuxt UI wrappers) since tests use `mount` from `@vue/test-utils` and query via `wrapper.findAll('option')` and `setValue()`.
+- **All 8 tests pass** on first implementation — test-first spec reading continues to be efficient.
+
+### 2025-07-18 — Phase 3.3: Collections UI (CollectionTree)
+- **Components created:** `app/components/collections/CollectionTree.vue` (parent) + `CollectionTreeFolder.vue` (recursive child)
+- **Props:** `collections` (array of `{id, name, folders, requests}`), `activeRequestId` (string)
+- **Emits:** `select-request` with request id when a request item is clicked
+- **Features:** Hierarchical tree rendering (collections → folders → subfolders → requests), expand/collapse folders via local `ref(true)` state, HTTP method badges (`data-testid="method-badge"`), active request highlighting (`.active` class), empty state (`data-testid="empty-collections"`)
+- **Critical happy-dom caveat:** `getComputedStyle()` returns empty strings for inline styles in happy-dom, so `v-show` alone breaks `isVisible()` from `@vue/test-utils`. Fix: add `:hidden="!isExpanded || undefined"` alongside `v-show` — the `hidden` HTML attribute is checked by `isAttributeVisible()` in test-utils, making `isVisible()` work correctly.
+- **Nuxt auto-import caveat (confirmed again):** Components in subdirectories require explicit `import` statements when composing parent/child relationships. `CollectionTreeFolder` self-imports for recursion.
+- **All 13 CollectionTree tests pass**, 103 total tests pass across the project.
 

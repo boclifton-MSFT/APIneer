@@ -7,47 +7,18 @@
 
 ## Learnings
 
-### Phase 2.9: Security Review of Proxy Engine + Request API (2026-03-30)
-
-**Review Scope:**
-- ProxyEngine.cs (HTTP proxy implementation)
-- Program.cs API endpoints for request execution and history
-- Data models (ApiRequest, EnvironmentVariable, RequestHistory)
-
-**Key Findings:**
-
-1. **HIGH: RequestHistory Stores Plaintext Credentials (P2-001)**
-   - `/api/requests/{id}/send` endpoint stores raw request/response in RequestHistory without sanitization
-   - Violates Invariant 6: "No plaintext secrets in request logs"
-   - Risk: Authorization headers, API keys, basic auth stored in plaintext SQLite
-   - Fix: Implement header/body sanitization before storing; redact Authorization, API-Key, etc. with `[REDACTED]`
-
-2. **MEDIUM: EnvironmentVariable.Value Stored Plaintext (P2-002)**
-   - EnvironmentVariable.cs stores Value as string (no DPAPI encryption)
-   - Violates Invariant 3: "Credentials encrypted at rest"
-   - Risk: If database is accessed, all secrets are readable
-   - Fix: Encrypt Value field with DPAPI before storage; only decrypt on backend at request time
-   - Status: Planned for Phase 1.5, but blocks full security implementation
-
-3. **MEDIUM: Verbose Error Messages Expose Context (P2-003)**
-   - ProxyEngine echoes URLs in error messages (line 30)
-   - Connection errors reveal internal implementation details
-   - Fix: Replace with generic error messages to frontend; log detailed errors server-side
-
-4. **LOW: No Audit Trail (P2-004)**
-   - Request execution not logged
-   - Cannot detect unauthorized activity or reconstruct execution history
-   - Recommendation: Add server-side audit logging for request execution (method, URL, status, duration)
-
-5. **INFO: ProxyEngine Integration Pending (P2-005)**
-   - `/send` endpoint is currently a stub (returns hardcoded response)
-   - Real integration required before header stripping can be tested
-   - ProxyEngine itself is well-implemented with proper timeout/size limit handling
-
-**Positive Findings:**
-- ✅ 10MB request size limit enforced
-- ✅ Timeout range (1-300s) correctly configured
-- ✅ SSRF design intentionally permissive (aligns with architecture)
+### 2026-03-30: Phase 2.9 Security Review — Proxy Engine + Request API
+- **Scope:** ProxyEngine.cs, Program.cs endpoints, Models (ApiRequest, EnvironmentVariable, RequestHistory)
+- **Review against:** Security Architecture Document v1.0
+- **Findings:** 1 HIGH, 2 MEDIUM, 1 LOW, 2 INFO
+  - **P2-001 (HIGH):** RequestHistory stores plaintext secrets in SQLite — violates Invariant 6. Fix: sanitize headers/body before storage.
+  - **P2-002 (MEDIUM):** EnvironmentVariable.Value plaintext (no DPAPI) — violates Invariant 3. Fix: implement DPAPI encryption layer.
+  - **P2-003 (MEDIUM):** Verbose error messages expose context (URL echo, implementation details) — violates defense-in-depth. Fix: generic messages to frontend, detailed logs server-side.
+  - **P2-004 (LOW):** No audit trail for request execution — observability gap. Recommendation: add server-side audit logging.
+  - **P2-005 (INFO):** ProxyEngine stub in /send endpoint — known placeholder, integration deferred.
+- **Positive findings:** 10MB size limit enforced, timeout configured (1-300s), SSRF intentionally permissive, method validation present, URL validation robust, redirect limit (20), error handling never throws, resource disposal correct
+- **Overall Risk:** MEDIUM — findings addressable with targeted fixes. No CRITICAL vulnerabilities.
+- **Recommendations:** Immediate P2-001/P2-003 fixes, Phase 1.5 DPAPI implementation, pre-production audit of history logs and assertion tests
 - ✅ 20-redirect limit prevents DoS
 - ✅ Error handling is non-throwing (returns structured ProxyError)
 - ✅ Resource disposal is correct (using statements)

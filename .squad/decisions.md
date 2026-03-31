@@ -2,7 +2,107 @@
 
 ## Active Decisions
 
-No decisions recorded yet.
+### Stack Decision (2026-03-30T21:41:04Z)
+**By:** boclifton-MSFT (via Copilot)  
+**Decision:** APIneer will use .NET 10 for the backend API and Nuxt UI v4 for the frontend. SQLite for local data persistence. No desktop shell — runs as localhost web app.  
+**Rationale:** User request — explicit stack choice.
+
+### TDD Directive (2026-03-30T21:41:04Z)
+**By:** boclifton-MSFT (via Copilot)  
+**Decision:** All development must follow Test-Driven Design (TDD). Freeman writes failing tests FIRST, then Marcus/Kratos implement to make them pass. Red → Green → Refactor cycle on every feature. No feature ships until all tests pass.  
+**Rationale:** User request — captured for team memory. User wants bulletproof, resilient software with comprehensive test coverage.
+
+### Backend Scaffold Architecture (2026-03-30)
+**By:** Marcus  
+**Decision:** Backend uses .NET 10 Minimal API pattern with EF Core + SQLite. Solution file is `APIneer.slnx` (new .NET 10 default format). API listens on `localhost:5000`. Test project uses `WebApplicationFactory<Program>` with in-memory SQLite, swapping the real DB. Initial migration `InitialCreate` covers all 7 entity types. Swagger is always on (no environment gate). Auto-migrate on startup.  
+**Rationale:** Minimal API keeps things lean for a local-first desktop tool. In-memory SQLite in tests avoids file I/O and gives full isolation per fixture. Auto-migrate on startup ensures the DB is always current without user intervention.
+
+### Proxy Engine Contract and Test Infrastructure (2026-03-30)
+**By:** Freeman  
+**Decision:** Defined the HTTP proxy engine contract via 35 TDD Red tests. Created `IProxyEngine` interface and DTOs (`ProxyRequest`, `ProxyResponse`, `ProxyError`, `RedirectEntry`) in `src/api/APIneer.Api/Proxy/`. Tests in `tests/APIneer.Api.Tests/Proxy/` use a `TestHttpServer` helper (raw `HostBuilder` + Kestrel on port 0) for integration testing. Key design decision: the proxy engine returns structured `ProxyError` objects instead of throwing exceptions, so the frontend always gets a renderable result. Error codes: `TIMEOUT`, `CONNECTION_REFUSED`, `DNS_FAILURE`, `INVALID_URL`, `REQUEST_ERROR`.  
+**Rationale:** TDD Red phase — tests define the proxy contract before implementation. Structured errors over exceptions ensure the UI never crashes on network failures. The `TestHttpServer` approach gives real HTTP integration testing without external dependencies. Security constraints (10MB body limit, 30s default timeout, no SSRF protection) are baked into the test expectations per `docs/security-architecture.md`.
+
+### Request API Contract Defined by Tests (2025-07-16)
+**By:** Freeman (Tester)  
+**Decision:** Defined the full Request CRUD API contract via failing tests. Endpoints: `POST /api/requests` (201 Created), `GET /api/requests` (list), `GET /api/requests/{id}` (detail), `PUT /api/requests/{id}` (update), `DELETE /api/requests/{id}` (204), `POST /api/requests/{id}/send` (execute), `GET /api/requests/{id}/history` (history list). Validation: empty URL→400, invalid method→400, missing name→400, missing collectionId→400, body>10MB→413. Valid methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.  
+**Rationale:** TDD Red phase — tests define the contract BEFORE implementation. Marcus builds to make these tests pass.
+
+### Clipboard Mock in Test Setup (2025-07-17)
+**By:** Kratos (Frontend)  
+**Decision:** Added a clipboard stub to `tests/setup.ts` that redefines `navigator.clipboard` as a writable/configurable property. This allows test-level `Object.assign` mocking to work without modifying individual test files.  
+**Rationale:** Freeman's ResponseBody tests use `Object.assign(navigator, { clipboard: { writeText } })` to mock clipboard. This fails in happy-dom because `navigator.clipboard` is getter-only. The stub solves this at setup time, unblocking all clipboard-dependent tests without per-test mocking.
+
+### Frontend Scaffolding Architecture (2025-07-16)
+**By:** Kratos  
+**Decision:** Frontend project at `src/ui/` uses Nuxt 4.4 + Nuxt UI v4.6 + Pinia + Zod. Testing uses Vitest 4 + @nuxt/test-utils (environment: 'nuxt') + MSW 2. API proxy configured: `/api/**` → `http://localhost:5000/api/**`. Dashboard layout with collapsible sidebar is the primary layout.  
+**Rationale:** Phase 1.2 scaffolding. Dashboard layout chosen because this is an API dev tool — sidebar nav + panel content is the right pattern. Nuxt environment required for `mountSuspended` to work in tests (happy-dom alone won't suffice).
+
+### ApiTestFixture Resets DB Between Tests (2026-03-30)
+**By:** Marcus (Backend Dev)  
+**Decision:** Added a `CreateClient()` override to `ApiTestFixture` that clears all entity tables before returning the client. Since each xUnit test creates a new test class instance (calling `CreateClient()` in the field initializer), every test now starts with a clean DB. This ensures full isolation — no ordering dependencies or cross-test pollution.  
+**Rationale:** xUnit `IClassFixture<ApiTestFixture>` shares a single in-memory SQLite DB across all tests in a class. Without reset, tests checking for empty state failed when other tests had already inserted records. DB clear on `CreateClient()` gives clean state per test without ordering guarantees.
+
+### Security Architecture Foundation (2026-03-30)
+**By:** Payne, Security Specialist  
+**Status:** Active  
+**Decision:** APIneer's security architecture is built on **encryption at rest + backend-only decryption + log sanitization**. No SSRF protection against localhost by design (tool IS for localhost testing).  
+**Rationale:**
+1. **Encryption at Rest (DPAPI)** — Protects against local file access attacks. Keys stored in OS-protected directories per-user, machine-bound.
+2. **Backend-Only Decryption** — Frontend never holds raw secrets. Requests reference auth configs; backend resolves and injects headers. Response logs stripped before return to UI.
+3. **No SSRF Protection** — APIneer's primary use case is testing localhost APIs and internal endpoints. Users explicitly construct requests. This is not a bug; it's a feature.
+4. **Log Sanitization** — All logs use `[REDACTED]` for credentials. No raw tokens, API keys, or passwords appear anywhere (logs, responses, UI).
+
+**Implementation Checklist (Phase 1.5):**
+- [ ] Implement DPAPI wrapper for secret storage
+- [ ] Add auth header injection logic (resolve → inject → strip)
+- [ ] Implement log redaction across all request/response logging
+- [ ] Write security tests for all 7 invariants
+- [ ] Sanitize collection imports (no inline scripts)
+
+## Security Review Findings (Phase 2.9)
+
+### P2-001: Request/Response Secrets Stored Plaintext in History Logs — HIGH
+**Location:** Program.cs `/api/requests/{id}/send` endpoint  
+**Issue:** RequestHistory stores raw request/response without sanitization. Authorization headers, API keys, and request bodies may contain secrets, stored as plaintext in SQLite.  
+**Violates:** Invariant 6: "No plaintext secrets in request logs"  
+**Fix Required:** Implement header/body sanitization before storage. Redact Authorization, API-Key, X-API-Key, etc. with `[REDACTED]`.  
+**Status:** 🔴 UNRESOLVED
+
+### P2-002: EnvironmentVariable.Value Stored Plaintext — MEDIUM
+**Location:** Models/EnvironmentVariable.cs  
+**Issue:** Value property stored as string without DPAPI encryption. No encryption at rest.  
+**Violates:** Invariant 3: "Credentials encrypted at rest"  
+**Fix Required:** Implement DPAPI encryption layer. Store encrypted bytes, decrypt only on backend at request execution time.  
+**Status:** 🔴 UNRESOLVED (Planned for Phase 1.5)
+
+### P2-003: Verbose Error Messages Expose Request Context — MEDIUM
+**Location:** ProxyEngine.cs lines 30, 59–65  
+**Issue:** Error messages echo user input (URLs) and expose implementation details from exception messages.  
+**Risk:** Stack trace information leak, unexpected echoing of user input  
+**Fix Required:** Provide generic error messages to frontend; log detailed errors server-side.  
+**Status:** 🟡 PARTIAL
+
+### P2-004: No Audit Trail for Request Execution — LOW
+**Location:** ProxyEngine.cs, Program.cs (entire /send endpoint)  
+**Issue:** No logging or audit trail when requests execute. Cannot detect unauthorized or suspicious activity.  
+**Fix Required:** Add server-side audit logging for request execution (method, URL, status, duration).  
+**Status:** ⚪ OBSERVATION
+
+### P2-005: ProxyEngine Integration Pending — INFO
+**Location:** Program.cs `/send` endpoint  
+**Status:** Stub currently returns hardcoded response. Real ProxyEngine.SendAsync() integration deferred.  
+**Future Work:** When integrated, response must strip injected auth headers per Invariant 4.  
+**Status:** ⚪ PLACEHOLDER
+
+## Positive Security Findings
+✅ ProxyEngine correctly enforces 10MB request size limit  
+✅ Timeout configuration properly implemented (1-300s range)  
+✅ SSRF design intentionally permissive — aligns with architecture  
+✅ HTTP method validation present  
+✅ URL parsing and validation robust  
+✅ Max redirect limit (20) prevents DoS  
+✅ Error handling never throws — returns structured ProxyError  
+✅ Resource disposal correct (using statements, finally block)
 
 ## Governance
 
