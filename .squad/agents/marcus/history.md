@@ -9,6 +9,14 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2026-03-30: E2E API Fixes — Health, Draft Requests, ProxyEngine Wiring
+- **`/api/health` endpoint:** Added at `/api/health` returning `{ status, timestamp }`. Original `/health` kept for backward compat
+- **Seed data:** Default workspace + collection created on first startup (after migrations) so requests can be created immediately
+- **Draft requests:** `POST /api/requests` now allows empty/null URL and null collectionId — auto-assigns to "Default" collection, creating workspace+collection on-the-fly if needed
+- **ProxyEngine wired up:** `POST /api/requests/{id}/send` now uses real `IProxyEngine.SendAsync()` instead of stub. Builds `ProxyRequest` from stored data (method, URL, headers, body), saves real `ProxyResponse` to `RequestHistory`, returns response with optional `error` field for transport failures
+- **Response shape:** Send response now includes `error: { code, message }` when proxy returns an error (TIMEOUT, DNS_FAILURE, CONNECTION_REFUSED, etc.)
+- **Test updates:** Validation tests updated (empty URL → Created, missing collectionId → auto-assigned). Send/history tests relaxed to handle unreachable target URLs. New smoke test for `/api/health`. 381 tests passing
+
 ### 2026-03-30: Phase 3.2 — Collections API Implementation (GREEN)
 - **Endpoints added:** 11 new/enhanced routes for collections, folders, reorder, duplicate, and move
 - **Collection CRUD:** POST/GET/PUT/DELETE `/api/collections` with full validation (name required), timestamps, Location header

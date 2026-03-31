@@ -64,8 +64,15 @@ async function handleSend(formData: { method: string; url: string; headers: { ke
   sending.value = true
   response.value = null
   try {
+    // Serialize headers array to JSON string for the API
+    const apiPayload = {
+      ...formData,
+      headers: formData.headers?.length ? JSON.stringify(formData.headers) : null,
+      body: formData.body || null,
+      bodyType: formData.bodyType === 'none' ? null : formData.bodyType
+    }
     // Save the current form state first (uses the actual user input, not stale API data)
-    await api.updateRequest(selectedRequest.value.id, formData)
+    await api.updateRequest(selectedRequest.value.id, apiPayload)
     // Then send
     response.value = await api.sendRequest(selectedRequest.value.id)
   } catch (err: any) {
