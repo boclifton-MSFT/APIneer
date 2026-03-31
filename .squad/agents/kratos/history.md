@@ -52,6 +52,15 @@
 - **happy-dom clipboard mocking:** `navigator.clipboard` is a getter-only property in happy-dom. Tests using `Object.assign(navigator, { clipboard: ... })` fail unless `setup.ts` first redefines `clipboard` as a writable property via `Object.defineProperty`.
 - **Test-first pattern works well:** Reading Freeman's tests as specs made component implementation straightforward — data-testids, CSS class conventions, and DOM structure were all clearly defined.
 
+### 2026-03-31 — QueryParamsEditor: Complete Implementation (GREEN)
+- **Component:** `app/components/request-builder/QueryParamsEditor.vue` — production-ready key-value table with enable/disable toggles per row, bidirectional sync with URL bar
+- **Pattern:** Uses `v-model:url` prop for two-way binding. Parses URL query string into table rows, rebuilds query string on edits. Uses `suppressUrlSync` flag to prevent recursive watch triggers during emit cycles.
+- **Manual URL parsing:** `split('&')` + `decodeURIComponent` instead of URLSearchParams — gives full control over edge cases (key-only params, duplicate keys, original ordering)
+- **Edge cases handled:** `+` decoded as space (form-urlencoded convention), percent-encoded values, `?` with no params, duplicate keys, key-only params (no `=`), disabled params excluded from URL but preserved in table
+- **Wired into:** `RequestBuilder.vue` — replaced "coming soon" placeholder in Params tab
+- **Pre-existing fix:** Fixed bug in RequestBuilder.vue where `req.headers` could be JSON string from API but was assumed to be array. Added fallback JSON.parse handling.
+- **Test results:** All 16 unit tests GREEN (Freeman wrote; Kratos implemented). All 190 total tests pass (16 new + 174 existing). Zero regressions.
+
 ## Cross-Agent Context (Phase 2)
 
 ### Freeman — Builder UI Tests (RED)
@@ -139,4 +148,64 @@
 - **Command palette:** Wired "New Request" action to `POST /api/requests` then navigate, Ctrl+N shortcut does the same. Navigation actions route to correct pages
 - **Icons fix:** Installed `@iconify-json/lucide` — resolves all `[Icon] failed to load icon lucide:*` errors
 - **Build:** `pnpm nuxt build` passes clean. Pre-existing test timeout issues unchanged (8 files, `@nuxt/test-utils` hook timeouts)
+
+### 2026-03-31 — Phase collections-context-menu + collections-save-to: CollectionContextMenu & CollectionPicker (GREEN, 24/24 tests)
+- **CollectionContextMenu.vue:** Right-click context menu for collection tree items
+  - Props: `visible` (boolean), `item` (object with `type` field), `position` ({ x, y })
+  - Emits: `action` (payload `{ action: string, item }`) + `close`
+  - Type-specific actions: Collection (Rename/Delete/Duplicate/New Folder/New Request/Export), Folder (Rename/Delete/New Sub-folder/New Request), Request (Rename/Delete/Duplicate/Move to...)
+  - Uses transparent overlay for click-outside detection, fixed positioning at mouse coordinates
+  - All 13 tests pass
+- **CollectionPicker.vue:** Dropdown selector for choosing collection/folder destination
+  - Props: `collections` (array), `mode` ('inline' | 'modal')
+  - Emits: `select` (payload `{ collectionId: string|null, folderId?: string }`)
+  - Recursive folder flattening with depth-based indentation, "Default" option emits `null` collectionId
+  - Modal mode wraps in `collection-picker-modal` container, inline mode adds `.inline` class
+  - Disabled state with `aria-disabled="true"` and "No collections" message when empty
+  - All 11 tests pass (including nested sub-folder hierarchy rendering)
+- **Key pattern:** Continues native HTML element approach (no Nuxt UI wrappers) — tests use `mount` from `@vue/test-utils` with `data-testid` selectors
+
+### 2026-03-31 — Phase collections-sidebar + collections-create-modal: CollectionSidebar & Create Modal (GREEN, 11/11 tests)
+- **CollectionSidebar.vue:** Full sidebar component wrapping collection tree with search, actions, and request selection
+  - Props: `collections` (array), `activeRequestId` (string), `selectedCollectionId` (string)
+  - Emits: `new-request` (payload `{ collectionId: string }`), `new-collection`, `select-request` (requestId)
+  - Features: Recursive request count per collection (`data-testid="collection-count-{id}"`), search/filter input (`data-testid="sidebar-search"`) with case-insensitive name matching, active request highlighting (`.active` class), empty state (`data-testid="sidebar-empty-state"`)
+  - Search filtering: Recursively filters folders and requests, hides entire collections with no matches
+  - Reuses `CollectionTreeFolder` for folder rendering with `@select-request` event propagation
+  - All 11 tests pass on first implementation
+- **index.vue updated:** Replaced flat request list with `CollectionSidebar`, loads collections via `api.getCollections()` on mount, wired "New Collection" button to `UModal` with `UInput` for name entry, create collection via API then refresh tree, new requests assigned to `selectedCollectionId`
+- **Key pattern:** Native `<input>` for search (supports `setValue()` in tests), `CollectionTreeFolder` reuse for recursive folder rendering
+- **Test suite:** 171 tests pass, 1 pre-existing InlineRename focus failure unrelated
+
+### 2026-03-31 — Phase collections-rename: InlineRename Component (GREEN, 10/10 tests)
+- **Component created:** `app/components/collections/InlineRename.vue` — inline text edit with double-click activation
+- **Props:** `value` (string, current name)
+- **Emits:** `rename` (new value string on save), `cancel` (on Escape)
+- **Features:** Display mode (span with `data-testid="inline-rename-display"`), edit mode (input with `data-testid="inline-rename-input"`), double-click to edit, Enter/blur to save, Escape to cancel, empty string validation (reverts to original)
+- **Key patterns:**
+  - Vue key modifiers (`@keydown.enter`, `@keydown.escape`) instead of manual `e.key` checks — works reliably with Vue test-utils `trigger('keydown.enter')` / `trigger('keydown.escape')`
+  - `handled` flag guards against blur double-fire when Enter/Escape removes input from DOM (v-if removal triggers blur)
+  - Template ref (`ref="inputRef"`) for auto-focus + select on edit activation via `nextTick` callback
+  - **happy-dom focus caveat:** `focus()` on detached elements (when `mount()` renders in a disconnected tree) doesn't set `document.activeElement`. Fix: check `el.isConnected` and walk up to root node, append to `document.body` before calling `focus()`. In production Nuxt apps, elements are always connected (no-op).
+- **All 10 InlineRename tests pass**, zero regressions
+
+### 2025-07-19 — Phase collections-drag-drop: Drag & Drop Reorder for Collection Tree
+- **Composable created:** `app/composables/useCollectionDragDrop.ts` — module-level shared `currentDrag` ref with `startDrag(event, payload)` / `endDrag()` helpers. All tree components share the same drag state via this composable.
+- **API functions added to `useApi.ts`:** `moveRequest(requestId, { collectionId, folderId })` → `PATCH /api/requests/{id}/move`, `reorderCollection(collectionId, items[])` → `PATCH /api/collections/{id}/reorder`
+- **CollectionTreeFolder.vue updated:**
+  - New optional prop `collectionId` (default `''`) for drag context
+  - New emits: `move-request`, `reorder` (bubble up through recursive tree)
+  - Request items: `draggable="true"` with `dragstart`/`dragend`/`dragover`/`dragleave`/`drop` handlers
+  - Folder headers: drop targets with `dragover`/`dragleave`/`drop` — dropping a request onto a folder emits `move-request`
+  - Reorder within same folder: detects above/below position via mouse Y vs element midpoint, recomputes request order array, emits `reorder`
+  - Recursive sub-folder calls forward `collection-id`, `@move-request`, `@reorder` events
+- **CollectionTree.vue updated:** Same drag-drop pattern for root-level requests + collection headers as drop targets
+- **CollectionSidebar.vue updated:** Same drag-drop pattern for root-level requests + collection headers as drop targets, preserves existing search/filter/count logic
+- **Visual indicators (scoped CSS in each component):**
+  - `.dragging` — opacity 0.4 on the item being dragged
+  - `.drag-over` — dashed primary-colored outline on valid drop target folders/collections
+  - `.drop-above` / `.drop-below` — solid primary-colored border line showing insertion point
+  - `cursor: grab` / `cursor: grabbing` on draggable items
+- **Architecture:** Native HTML5 drag-and-drop API, no external libraries. Module-level shared ref pattern ensures all nested components see the same drag state. Events bubble up through the recursive tree for parent to handle API calls.
+- **Build passes clean**, 172/172 tests pass, zero regressions
 

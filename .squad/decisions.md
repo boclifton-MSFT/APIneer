@@ -179,6 +179,17 @@
 
 All tests passing. Phase 1-8 complete.
 
+### QueryParamsEditor URL Parsing (2026-03-31)
+**By:** Kratos (Frontend)  
+**Decision:** QueryParamsEditor uses manual query string parsing (`split('&')` + `decodeURIComponent`) instead of `URLSearchParams` for URL ↔ params sync. Handles `+` as space per form-urlencoded convention via `decodePart()` helper.  
+**Rationale:** Manual parsing gives full control over edge cases (key-only params, duplicate keys, original ordering). `URLSearchParams` normalizes values in ways that can cause unwanted URL rewrites. Bidirectional sync uses `v-model:url` + `suppressUrlSync` flag to prevent recursive watch loops.  
+**Impact:** Future URL/fragment/path param editors should follow this pattern. Reusable bidirectional sync pattern.
+
+### Playwright E2E Testing Directive (2026-03-31)
+**By:** boclifton-MSFT (via Copilot)  
+**Decision:** Always use Playwright MCP to E2E test UI changes — open the site, click buttons, verify everything works visually. Don't rely solely on unit tests.  
+**Rationale:** User request — captured for team memory. Ensures visual correctness beyond snapshot/unit coverage.
+
 ## Governance
 
 - All meaningful changes require team consensus
