@@ -3,6 +3,24 @@ defineOptions({ name: 'AppCommandPalette' })
 
 const isOpen = ref(false)
 const router = useRouter()
+const api = useApi()
+const toast = useToast()
+
+async function createNewRequest() {
+  try {
+    const req = await api.createRequest({
+      name: 'Untitled Request',
+      method: 'GET',
+      url: ''
+    })
+    isOpen.value = false
+    await router.push({ path: '/', query: { request: req.id } })
+    toast.add({ title: 'Request created', color: 'success', icon: 'i-lucide-check' })
+  } catch {
+    isOpen.value = false
+    router.push('/')
+  }
+}
 
 const groups = computed(() => [
   {
@@ -13,10 +31,7 @@ const groups = computed(() => [
         label: 'New Request',
         icon: 'i-lucide-plus',
         kbds: ['meta', 'N'],
-        onSelect: () => {
-          isOpen.value = false
-          router.push('/')
-        }
+        onSelect: () => createNewRequest()
       },
       {
         label: 'Settings',
@@ -73,7 +88,7 @@ defineShortcuts({
     isOpen.value = !isOpen.value
   },
   meta_n: () => {
-    router.push('/')
+    createNewRequest()
   }
 })
 </script>

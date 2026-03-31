@@ -130,3 +130,13 @@
 - **Key pattern:** Uses `:value` + `@input`/`@change` instead of `v-model` to emit full config objects on every change. `defaultConfigFor()` helper creates clean config shapes on type switch.
 - **All 13 AuthEditor tests pass**, 127 total tests pass across the project (zero regressions)
 
+### 2026-03-31 — Phase 9: Page Wiring & Integration
+- **API composable:** Created `app/composables/useApi.ts` — typed helper wrapping `$fetch` for all backend endpoints (requests CRUD, send, collections CRUD, history, environments CRUD, variables CRUD)
+- **Requests page (`index.vue`):** Rewired from empty state to dual-panel list-detail layout. Left panel: request list with create/delete, method badges. Right panel: `RequestBuilder` + `ResponseViewer`. New Request creates via `POST /api/requests`, Send button saves then calls `POST /api/requests/{id}/send`, response displayed in `ResponseViewer`
+- **Collections page (`collections.vue`):** Dashboard layout with `CollectionTree` component, empty state, create collection modal (`UModal` + `UInput`), clicking a request navigates to request builder with query param
+- **History page (`history.vue`):** Dashboard layout with `UTable` showing method/URL/status/time/date columns, color-coded badges, "Clear History" button, empty state with link to Requests
+- **Environments page (`environments.vue`):** Dual-panel layout. Left: environment list with `EnvironmentSelector`, create/edit/delete. Right: variable key-value table with add/delete, secret masking (`***masked***`), create/edit modals
+- **Command palette:** Wired "New Request" action to `POST /api/requests` then navigate, Ctrl+N shortcut does the same. Navigation actions route to correct pages
+- **Icons fix:** Installed `@iconify-json/lucide` — resolves all `[Icon] failed to load icon lucide:*` errors
+- **Build:** `pnpm nuxt build` passes clean. Pre-existing test timeout issues unchanged (8 files, `@nuxt/test-utils` hook timeouts)
+
