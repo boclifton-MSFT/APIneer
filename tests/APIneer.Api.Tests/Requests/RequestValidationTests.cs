@@ -12,22 +12,22 @@ public class RequestValidationTests(ApiTestFixture fixture) : IClassFixture<ApiT
     private readonly HttpClient _client = fixture.CreateClient();
 
     // ──────────────────────────────────────────────
-    // Empty URL → 400 Bad Request
+    // Empty/missing URL → Allowed (draft requests)
     // ──────────────────────────────────────────────
 
     [Fact]
-    public async Task Should_ReturnBadRequest_When_UrlIsEmpty()
+    public async Task Should_AcceptRequest_When_UrlIsEmpty()
     {
         var collectionId = await TestData.SeedCollectionAsync(_client);
 
         var response = await _client.PostAsync("/api/requests",
             TestData.JsonContent(TestData.RequestWithEmptyUrl(collectionId)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
     [Fact]
-    public async Task Should_ReturnBadRequest_When_UrlIsMissing()
+    public async Task Should_AcceptRequest_When_UrlIsMissing()
     {
         var collectionId = await TestData.SeedCollectionAsync(_client);
         var payload = new { name = "No URL", method = "GET", collectionId };
@@ -35,7 +35,7 @@ public class RequestValidationTests(ApiTestFixture fixture) : IClassFixture<ApiT
         var response = await _client.PostAsync("/api/requests",
             TestData.JsonContent(payload));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
     // ──────────────────────────────────────────────
@@ -172,11 +172,11 @@ public class RequestValidationTests(ApiTestFixture fixture) : IClassFixture<ApiT
     }
 
     // ──────────────────────────────────────────────
-    // CollectionId required
+    // Missing CollectionId → Auto-assigned to Default
     // ──────────────────────────────────────────────
 
     [Fact]
-    public async Task Should_ReturnBadRequest_When_CollectionIdIsMissing()
+    public async Task Should_AutoAssignCollection_When_CollectionIdIsMissing()
     {
         var payload = new
         {
@@ -188,6 +188,6 @@ public class RequestValidationTests(ApiTestFixture fixture) : IClassFixture<ApiT
         var response = await _client.PostAsync("/api/requests",
             TestData.JsonContent(payload));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 }

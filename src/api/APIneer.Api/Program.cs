@@ -84,11 +84,36 @@ builder.Services.AddHttpClient("ProxyEngine", client =>
 
 var app = builder.Build();
 
-// Auto-apply migrations on startup
+// Auto-apply migrations on startup and seed default data
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // Seed a default workspace and collection so requests can be created immediately
+    if (!db.Workspaces.Any())
+    {
+        var now = DateTime.UtcNow;
+        var workspace = new Workspace
+        {
+            Id = Guid.NewGuid(),
+            Name = "Default",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.Workspaces.Add(workspace);
+
+        var collection = new Collection
+        {
+            Id = Guid.NewGuid(),
+            Name = "Default",
+            WorkspaceId = workspace.Id,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.Collections.Add(collection);
+        db.SaveChanges();
+    }
 }
 
 app.UseSwagger();
@@ -102,6 +127,10 @@ app.MapGet("/", () => Results.Redirect("/swagger"))
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
     .WithName("HealthCheck")
+    .WithTags("System");
+
+app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
+    .WithName("ApiHealthCheck")
     .WithTags("System");
 
 // ─── Validation constants ───────────────────────────────────────
@@ -385,14 +414,34 @@ app.MapPost("/api/requests", async (AppDbContext db, CreateRequestDto dto) =>
     if (string.IsNullOrWhiteSpace(dto.Name))
         return Results.BadRequest(new { error = "Name is required." });
 
-    if (string.IsNullOrWhiteSpace(dto.Url))
-        return Results.BadRequest(new { error = "URL is required." });
-
     if (string.IsNullOrWhiteSpace(dto.Method) || !validHttpMethods.Contains(dto.Method))
         return Results.BadRequest(new { error = "Invalid HTTP method." });
 
+    // Auto-assign collectionId when not provided — find or create default collection
+    Guid resolvedCollectionId;
     if (dto.CollectionId is null || dto.CollectionId == Guid.Empty)
-        return Results.BadRequest(new { error = "CollectionId is required." });
+    {
+        var defaultCollection = await db.Collections.FirstOrDefaultAsync(c => c.Name == "Default");
+        if (defaultCollection is null)
+        {
+            var defaultWorkspace = await db.Workspaces.FirstOrDefaultAsync(w => w.Name == "Default");
+            if (defaultWorkspace is null)
+            {
+                var now2 = DateTime.UtcNow;
+                defaultWorkspace = new Workspace { Id = Guid.NewGuid(), Name = "Default", CreatedAt = now2, UpdatedAt = now2 };
+                db.Workspaces.Add(defaultWorkspace);
+            }
+            var now3 = DateTime.UtcNow;
+            defaultCollection = new Collection { Id = Guid.NewGuid(), Name = "Default", WorkspaceId = defaultWorkspace.Id, CreatedAt = now3, UpdatedAt = now3 };
+            db.Collections.Add(defaultCollection);
+            await db.SaveChangesAsync();
+        }
+        resolvedCollectionId = defaultCollection.Id;
+    }
+    else
+    {
+        resolvedCollectionId = dto.CollectionId.Value;
+    }
 
     if (dto.Body is not null && dto.Body.Length > maxBodySize)
         return Results.StatusCode(413);
@@ -413,7 +462,7 @@ app.MapPost("/api/requests", async (AppDbContext db, CreateRequestDto dto) =>
     else
     {
         var maxOrder = await db.ApiRequests
-            .Where(r => r.CollectionId == dto.CollectionId!.Value && r.FolderId == null)
+            .Where(r => r.CollectionId == resolvedCollectionId && r.FolderId == null)
             .MaxAsync(r => (int?)r.SortOrder) ?? -1;
         sortOrder = maxOrder + 1;
     }
@@ -424,8 +473,8 @@ app.MapPost("/api/requests", async (AppDbContext db, CreateRequestDto dto) =>
         Id = Guid.NewGuid(),
         Name = dto.Name,
         Method = dto.Method.ToUpperInvariant(),
-        Url = dto.Url,
-        CollectionId = dto.CollectionId.Value,
+        Url = dto.Url ?? "",
+        CollectionId = resolvedCollectionId,
         Headers = dto.Headers,
         Body = dto.Body,
         BodyType = dto.BodyType,
@@ -496,18 +545,43 @@ app.MapDelete("/api/requests/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // ─── Request execution & history ────────────────────────────────
 
-app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db) =>
+app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db, IProxyEngine proxy) =>
 {
     var request = await db.ApiRequests.FindAsync(id);
     if (request is null) return Results.NotFound();
 
-    // Stub response — real proxy engine integration deferred
-    var responseStatus = 200;
-    var responseBody = """{"message":"OK"}""";
-    var responseHeaders = """{"Content-Type":"application/json"}""";
-    var responseTimeMs = 0L;
-    var responseSizeBytes = (long)(responseBody?.Length ?? 0);
+    // Build ProxyRequest from stored request data
+    var proxyRequest = new ProxyRequest
+    {
+        Method = request.Method,
+        Url = request.Url,
+        Body = request.Body,
+        BodyType = request.BodyType
+    };
 
+    // Parse stored headers (JSON string) into the proxy request
+    if (!string.IsNullOrEmpty(request.Headers))
+    {
+        try
+        {
+            var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(request.Headers);
+            if (headers is not null)
+                proxyRequest.Headers = headers;
+        }
+        catch { /* Ignore malformed headers — send without them */ }
+    }
+
+    // Execute via the real proxy engine
+    var proxyResponse = await proxy.SendAsync(proxyRequest);
+
+    // Serialize response headers for storage
+    string? responseHeaders = null;
+    if (proxyResponse.Headers.Count > 0)
+    {
+        responseHeaders = JsonSerializer.Serialize(proxyResponse.Headers);
+    }
+
+    // Record history
     var history = new RequestHistory
     {
         Id = Guid.NewGuid(),
@@ -516,11 +590,11 @@ app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db) =>
         Url = request.Url,
         RequestHeaders = request.Headers,
         RequestBody = request.Body,
-        ResponseStatus = responseStatus,
+        ResponseStatus = proxyResponse.StatusCode,
         ResponseHeaders = responseHeaders,
-        ResponseBody = responseBody,
-        ResponseTimeMs = responseTimeMs,
-        ResponseSizeBytes = responseSizeBytes,
+        ResponseBody = proxyResponse.Body,
+        ResponseTimeMs = proxyResponse.ResponseTimeMs,
+        ResponseSizeBytes = proxyResponse.ResponseSizeBytes,
         ExecutedAt = DateTime.UtcNow
     };
 
@@ -529,11 +603,16 @@ app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db) =>
 
     return Results.Ok(new
     {
-        responseStatus,
+        responseStatus = proxyResponse.StatusCode,
         responseHeaders,
-        responseBody,
-        responseTimeMs,
-        responseSizeBytes
+        responseBody = proxyResponse.Body,
+        responseTimeMs = proxyResponse.ResponseTimeMs,
+        responseSizeBytes = proxyResponse.ResponseSizeBytes,
+        error = proxyResponse.Error is not null ? new
+        {
+            code = proxyResponse.Error.Code,
+            message = proxyResponse.Error.Message
+        } : null
     });
 }).WithTags("Requests");
 

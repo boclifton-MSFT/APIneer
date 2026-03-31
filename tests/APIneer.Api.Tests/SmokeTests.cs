@@ -21,6 +21,17 @@ public class SmokeTests(ApiTestFixture fixture) : IClassFixture<ApiTestFixture>
     }
 
     [Fact]
+    public async Task ApiHealthEndpoint_ReturnsOk()
+    {
+        var response = await _client.GetAsync("/api/health");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("healthy");
+        body.Should().Contain("timestamp");
+    }
+
+    [Fact]
     public async Task SwaggerEndpoint_ReturnsOk()
     {
         var response = await _client.GetAsync("/swagger/v1/swagger.json");
