@@ -94,3 +94,39 @@
 - **Nuxt auto-import caveat (confirmed again):** Components in subdirectories require explicit `import` statements when composing parent/child relationships. `CollectionTreeFolder` self-imports for recursion.
 - **All 13 CollectionTree tests pass**, 103 total tests pass across the project.
 
+### 2025-07-18 — Phase 8.1: Theming & Branding
+- **Brand colors configured** in `app.config.ts`: primary `sky`, secondary `violet`, neutral `slate` — professional blue-teal palette
+- **CSS variables** in `app/assets/css/main.css`: `--ui-radius: 0.375rem`, font-sans set to Inter, font-mono to JetBrains Mono via `@theme` directive
+- **Dark/light mode:** Added `UColorModeButton` to dashboard sidebar footer — toggles dark/light with ghost style
+- **Command palette:** Created `app/components/app/CommandPalette.vue` — `UCommandPalette` inside `UModal` with two groups (Actions + Navigation):
+  - `Ctrl+K` — open/close command palette
+  - `Ctrl+N` — new request (navigates to /)
+  - Settings shortcut with `meta+,`
+  - Navigation items for Requests, Collections, History, Environments
+- **Dashboard branding:** Sidebar header now has a branded icon container (rounded bg-primary/10) with "APIneer" title + "API Platform" subtitle
+- **Sidebar navigation:** Added "History" nav item (i-lucide-history), changed Collections icon to `i-lucide-folder-open`
+- **Index page polish:** Empty state with centered icon, heading, description, and "New Request" CTA button; navbar shows Ctrl+K shortcut hint
+- **Build passes** (`pnpm nuxt build` — clean). Test failures are pre-existing @nuxt/test-utils timeout issues in 6 component test files (not related to theming changes).
+
+### 2026-03-31 — Phase 6.4: Import Modal UI (GREEN, 11/11 tests)
+- **Component created:** `app/components/import-export/ImportModal.vue` — file import dialog with format selection and cURL paste support
+- **Props:** `visible` (boolean) — controls modal rendering via `v-if`
+- **Emits:** `close` (cancel/close button), `import` (payload: `{ format: string, data: string }`)
+- **Features:** File upload drop zone (`data-testid="file-upload-area"`), native `<select>` format selector (postman/curl/har), import button disabled until content provided, preview area showing "No file selected" empty state, cURL textarea (`data-testid="curl-input"`) appears when curl format selected
+- **Key pattern:** Continues native HTML element approach (not Nuxt UI wrappers) since tests use `mount` from `@vue/test-utils` and query via `findAll('option')`, `setValue()`, and `data-testid` selectors
+- **All 11 ImportModal tests pass** on first implementation — test-first spec reading continues to be efficient
+
+### 2026-03-31 — Phase 5.3: Auth Editor UI (GREEN, 13/13 tests)
+- **Component created:** `app/components/auth/AuthEditor.vue` — auth configuration editor with type switching and form fields
+- **Props:** `modelValue` (auth config object with `type` field), `showInherit` (boolean), `inherit` (boolean)
+- **Emits:** `update:modelValue` (auth config object on type or field change), `update:inherit` (boolean on toggle change)
+- **Auth types:** None (`none`), API Key (`api_key`), Bearer Token (`bearer`), Basic Auth (`basic`), OAuth 2.0 (`oauth2`)
+- **Type-specific fields:**
+  - API Key: keyName, keyValue, placement (header/query select)
+  - Bearer Token: token input
+  - Basic Auth: username + password inputs
+  - OAuth 2.0: tokenEndpoint, clientId, clientSecret, scope
+- **Features:** Native `<select>` type selector with `data-testid="auth-type-selector"`, conditional field rendering via `v-if`, inherit-from-collection checkbox toggle, defaults to `none` when no modelValue
+- **Key pattern:** Uses `:value` + `@input`/`@change` instead of `v-model` to emit full config objects on every change. `defaultConfigFor()` helper creates clean config shapes on type switch.
+- **All 13 AuthEditor tests pass**, 127 total tests pass across the project (zero regressions)
+

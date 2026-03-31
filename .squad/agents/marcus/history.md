@@ -159,3 +159,52 @@
 - **Assertions (16 tests):** `POST /api/requests/{id}/assertions` (types: status_equals, body_contains, header_exists). `GET /api/requests/{id}/assertions` lists. `POST /api/requests/{id}/test` executes and evaluates assertions.
 - **Status:** RED phase — 46 fail (expected, endpoints being implemented), 4 pass (coincidental 404 handlers)
 - **Note:** Test contracts fully specified; Marcus implements in GREEN phase
+
+### 2026-03-31: Phase 6.2 + 6.3 — Import/Export Engines Implementation (GREEN, 57/57 tests)
+- **Import services** in `src/api/APIneer.Api/ImportExport/`:
+  - `PostmanImporter.cs` — parses Postman v2.1 JSON collections into APIneer collections with full folder hierarchy, requests, headers, body, and body type. Recursive `ProcessItems` handles arbitrary nesting. Validates schema field presence.
+  - `CurlImporter.cs` — tokenizes cURL commands (respecting quotes), extracts -X (method), -H (headers), -d/--data (body), -u (basic auth → Base64 Authorization header). Handles multiline backslash continuation via regex normalization.
+  - `JsonImporter.cs` — re-imports APIneer native JSON exports, creating new collection with new IDs. Preserves folder hierarchy, requests, and all metadata.
+- **Export services:**
+  - `JsonExporter.cs` — exports collection as APIneer native JSON with nested folders, sub-folders, and requests including headers/body/bodyType.
+  - `CurlExporter.cs` — generates cURL commands per request with -X method, -H headers, -d body flags.
+  - `PostmanExporter.cs` — exports as Postman v2.1 format with info.schema, nested item structure (folders as items with child items, requests as items with request object).
+- **Endpoints added to `Program.cs`:**
+  - `POST /api/import/postman` — accepts `{ "collection": "<postman json>" }` wrapper
+  - `POST /api/import/curl` — accepts raw cURL text (text/plain)
+  - `POST /api/import/json` — accepts APIneer native JSON for round-trip import
+  - `GET /api/collections/{id}/export?format=json|curl|postman` — export in specified format; validates format param, returns 404 for missing collection
+- **MapRequestSummary fix:** Added `Headers`, `Body`, `BodyType` fields to collection detail response so imported data is visible via GET
+- **Test results:** All 57 import/export tests pass (15 Postman import, 15 cURL import, 16 export, 11 round-trip). 369 total tests pass, zero regressions.
+
+### 2026-03-30: Phase 5.2 — Auth Engine Implementation (GREEN, 46/46 tests)
+- **File:** `src/api/APIneer.Api/Auth/AuthHandler.cs` — implements `IAuthHandler`
+- **API Key:** Header placement injects custom header; query placement appends URL-encoded key=value to URL; missing placement defaults to header; missing KeyName/KeyValue → ArgumentException
+- **Bearer Token:** Injects `Authorization: Bearer {token}` header; overwrites existing Authorization; empty/null token → ArgumentException
+- **Basic Auth:** Encodes `{username}:{password}` as UTF-8 base64, injects `Authorization: Basic {encoded}`; empty username/password still encodes; null → ArgumentException
+- **OAuth 2.0 Client Credentials:** POSTs to token endpoint with grant_type=client_credentials, client_id, client_secret, scope as form-encoded body; parses JSON response for access_token and expires_in; caches token with TokenExpiresAt; reuses cached token when not expired; re-fetches when expired; stores AccessToken back on AuthConfig; non-200 response → InvalidOperationException; missing endpoint/clientId/clientSecret → ArgumentException
+- **Auth Inheritance:** `ResolveAuth(requestAuth, collectionAuth)` — request overrides collection; null request → inherit collection; type "none" → returns null (explicitly disables inherited auth); both null → null
+- **DI Registration:** `AddHttpClient<IAuthHandler, AuthHandler>()` in Program.cs — typed HttpClient for OAuth2 token requests
+- **Test results:** All 46 auth tests pass (ApiKeyAuth: 10, BearerToken: 7, BasicAuth: 10, OAuth2: 13, AuthInheritance: 7); zero regressions on other test suites
+
+### 2026-03-31: Phase 7.4 — WebSocket Support (GREEN, 25/25 tests)
+- **WebSocket proxy:** `src/api/APIneer.Api/WebSocket/WebSocketProxy.cs` — connects to target WebSocket, relays messages bidirectionally
+- **Connection lifecycle:** `ConnectAsync(url)` validates URL (ws/wss/http/https), `SendAsync(msg)` forwards text messages, `DisconnectAsync()` graceful close
+- **Status tracking:** `WebSocketConnectionStatus` enum (Connecting, Open, Closed, Error) with error message capture
+- **Message history:** `ConcurrentQueue<WebSocketMessage>` stores sent/received messages with direction, content, timestamp
+- **Background receive loop:** Async loop reads from target WebSocket, handles multi-frame messages, detects close/error
+- **WebSocket upgrade support:** `HandleUpgradeAsync` accepts browser WS upgrades and relays client↔target bidirectionally
+- **REST endpoints (5 routes, all before `app.Run()`):**
+  - `GET /api/ws/connect?url={target}` — connects via REST or upgrades to WebSocket
+  - `POST /api/ws/send` — send message to connected WebSocket (SendMessageDto)
+  - `GET /api/ws/messages` — get message history with status
+  - `DELETE /api/ws/disconnect` — close connection (always calls DisconnectAsync to handle error states)
+  - `GET /api/ws/status` — connection status, target URL, message count, error
+- **DI:** `WebSocketProxy` registered as singleton, `app.UseWebSockets()` middleware added
+- **Tests (25 total):**
+  - `WebSocketProxyTests` (13 unit tests): connect, send/receive echo, disconnect, error handling, multiple messages, history, timestamps, http→ws scheme conversion, duplicate connect guard
+  - `WebSocketEndpointTests` (12 integration tests): REST connect/disconnect/send/messages/status, validation (missing URL, empty message, not connected), error target handling
+  - `TestWebSocketServer` — Kestrel-based echo WS server on random port for tests
+- **Key fix:** Disconnect endpoint always calls `DisconnectAsync()` regardless of state (not just when Open) — needed to reset from Error state
+- **Endpoint placement fix:** All WebSocket routes must be registered before `app.Run()` (initial placement after helper functions caused 404s)
+- **Zero regressions:** 312/312 non-ImportExport tests pass (ImportExport failures pre-existing)

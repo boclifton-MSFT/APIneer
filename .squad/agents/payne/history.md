@@ -7,6 +7,86 @@
 
 ## Learnings
 
+### Phase 4.4: Credential Security Implementation (2026-03-31)
+
+**Objective:** Implement the Data Protection encryption layer for secrets per security-architecture.md
+
+**Implementation:**
+1. **CredentialProtector Service** (`src/api/APIneer.Api/Services/CredentialProtector.cs`)
+   - ICredentialProtector interface with Encrypt/Decrypt methods
+   - Uses Microsoft.AspNetCore.DataProtection (DPAPI)
+   - Keys persisted to OS-protected directory (`%APPDATA%\APIneer\keys\`)
+   - Logs at DEBUG level for audit trail (key names, not values)
+
+2. **Program.cs Configuration**
+   - Added `builder.Services.AddDataProtection().PersistKeysToFileSystem()`
+   - Registered `ICredentialProtector` as scoped dependency
+   - All three environment variable endpoints (POST/PUT/GET) integrated with encryption/decryption
+
+3. **Encryption Strategy**
+   - **On Write:** When IsSecret=true, plaintext encrypted via DPAPI → base64-encoded → stored in Value
+   - **On Read (API):** MapToVariableResponse masks with `***masked***` when IsSecret=true
+   - **On Read (Resolution):** /api/environments/resolve decrypts on backend for variable substitution
+   - Supports mixed plaintext + secret variables in same environment
+
+4. **Security Tests** (17 tests, all passing)
+   - `CredentialProtectorTests.cs` (10 tests)
+     - Encrypt/decrypt round-trip with various secret formats (API keys, tokens, passwords)
+     - Verifies ciphertext is non-trivial (not plaintext)
+     - Error handling for null/empty inputs
+     - Decryption failures on invalid ciphertext
+   - `EncryptedSecretVariableTests.cs` (7 tests)
+     - Invariant 1: No raw secrets in API responses
+     - Invariant 3: Encrypted storage verified
+     - Invariant 6: Plaintext never visible in logs
+     - Mixed plaintext + secret variables resolve correctly
+     - Update encryption changes (old secret not used after update)
+
+**Test Results:**
+- ✅ 60/60 Environments + Security tests pass (10 credential protector + 7 integration + 43 existing env tests)
+- ✅ Build succeeds with 0 errors
+- ✅ Encryption/decryption verified at both storage and resolution layers
+
+**Security Invariants Compliance:**
+- ✅ Invariant 1 (No Raw Secrets in API Responses): PASS — POST/GET/PUT responses show `***masked***`
+- ✅ Invariant 2 (Masking in UI): PASS — Frontend receives masked responses
+- ✅ Invariant 3 (Encrypted at Rest): PASS — Secrets stored as encrypted base64 in SQLite
+- ✅ Invariant 6 (No Plaintext in Logs): PASS — Only key names logged, not values
+
+**Edge Cases Handled:**
+- Empty/null secret values rejected (ArgumentNullException)
+- Invalid ciphertext decryption throws InvalidOperationException (caught in endpoint, returns 400)
+- Variable type changes (plaintext ↔ secret) correctly re-encrypt on update
+- Switching environments switches active secrets (environment scope respected)
+
+**Key Design Decisions:**
+1. **Base64 Encoding:** Encrypted bytes stored as base64 in Value field for database compatibility
+2. **Per-Request Decryption:** Secrets decrypted at resolution time (not on GET) to minimize plaintext lifetime
+3. **Audit Logging:** Only symmetric logging (key name, timestamp) — never the decrypted value
+4. **Error Messages:** User sees "Failed to encrypt/decrypt secret value" without technical details
+
+**Blockers Resolved:**
+- P2-002 (MEDIUM): EnvironmentVariable plaintext → FIXED with DPAPI layer
+- Secrets no longer violate Invariant 3
+
+**Known Limitations:**
+- Key rotation not implemented (Phase 1.6 future work)
+- No master password (optional user protection, Phase 1.6 future work)
+- DPAPI is machine-bound (not portable across machines)
+
+**Next Phase (4.5+):**
+- RequestHistory sanitization (P2-001 blocker)
+- Verbose error message reduction (P2-003)
+- Audit logging for request execution (P2-004)
+
+**Deliverables:**
+- Services/CredentialProtector.cs (78 lines, 2 classes)
+- Program.cs updated (3 endpoints modified, 1 service configured)
+- Security/CredentialProtectorTests.cs (154 lines, 10 tests)
+- Security/EncryptedSecretVariableTests.cs (289 lines, 7 tests)
+
+---
+
 ### 2026-03-30: Phase 2.9 Security Review — Proxy Engine + Request API
 - **Scope:** ProxyEngine.cs, Program.cs endpoints, Models (ApiRequest, EnvironmentVariable, RequestHistory)
 - **Review against:** Security Architecture Document v1.0
