@@ -8,14 +8,24 @@ import BodyEditor from './BodyEditor.vue'
 
 const REQUEST_TABS = ['Params', 'Headers', 'Body', 'Auth'] as const
 
+interface RequestData {
+  method: string
+  url: string
+  headers?: { key: string; value: string }[]
+  body?: string
+  bodyType?: string
+}
+
 const props = withDefaults(defineProps<{
   loading?: boolean
+  request?: RequestData | null
 }>(), {
-  loading: false
+  loading: false,
+  request: null
 })
 
 const emit = defineEmits<{
-  send: []
+  send: [payload: { method: string; url: string; headers: { key: string; value: string }[]; body: string; bodyType: string }]
 }>()
 
 const method = ref('GET')
@@ -25,9 +35,32 @@ const bodyContent = ref('')
 const bodyType = ref('none')
 const activeTab = ref<string>('Params')
 
+// Sync local state when the selected request changes
+watch(() => props.request, (req) => {
+  if (req) {
+    method.value = req.method || 'GET'
+    url.value = req.url || ''
+    headers.value = req.headers?.length ? req.headers.map(h => ({ ...h })) : [{ key: '', value: '' }]
+    bodyContent.value = req.body || ''
+    bodyType.value = req.bodyType || 'none'
+  } else {
+    method.value = 'GET'
+    url.value = ''
+    headers.value = [{ key: '', value: '' }]
+    bodyContent.value = ''
+    bodyType.value = 'none'
+  }
+}, { immediate: true })
+
 function onSend() {
   if (!props.loading) {
-    emit('send')
+    emit('send', {
+      method: method.value,
+      url: url.value,
+      headers: headers.value,
+      body: bodyContent.value,
+      bodyType: bodyType.value
+    })
   }
 }
 

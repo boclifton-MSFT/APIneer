@@ -7,6 +7,10 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  icon: {
+    serverBundle: 'local'
+  },
+
   routeRules: {
     '/api/**': { proxy: 'http://localhost:5000/api/**' }
   }

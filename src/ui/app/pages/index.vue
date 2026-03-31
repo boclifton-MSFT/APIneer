@@ -59,19 +59,13 @@ async function createNewRequest() {
 }
 
 // Send the selected request
-async function handleSend() {
+async function handleSend(formData: { method: string; url: string; headers: { key: string; value: string }[]; body: string; bodyType: string }) {
   if (!selectedRequest.value) return
   sending.value = true
   response.value = null
   try {
-    // Save the current state first
-    await api.updateRequest(selectedRequest.value.id, {
-      method: selectedRequest.value.method,
-      url: selectedRequest.value.url,
-      headers: selectedRequest.value.headers,
-      body: selectedRequest.value.body,
-      bodyType: selectedRequest.value.bodyType
-    })
+    // Save the current form state first (uses the actual user input, not stale API data)
+    await api.updateRequest(selectedRequest.value.id, formData)
     // Then send
     response.value = await api.sendRequest(selectedRequest.value.id)
   } catch (err: any) {
@@ -204,6 +198,7 @@ onMounted(() => {
 
       <div v-else class="flex flex-col gap-6 p-4">
         <RequestBuilder
+          :request="selectedRequest"
           :loading="sending"
           @send="handleSend"
         />

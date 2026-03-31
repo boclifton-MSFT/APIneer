@@ -106,7 +106,54 @@ export function useApi() {
   }
 
   async function sendRequest(id: string) {
-    return await $fetch<ApiResponse>(`/api/requests/${id}/send`, { method: 'POST' })
+    const raw = await $fetch<{
+      responseStatus: number
+      responseHeaders: string | null
+      responseBody: string | null
+      responseTimeMs: number
+      responseSizeBytes: number
+      error: { code: string; message: string } | null
+    }>(`/api/requests/${id}/send`, { method: 'POST' })
+
+    if (raw.error) {
+      throw new Error(raw.error.message)
+    }
+
+    let headers: { name: string; value: string }[] = []
+    let contentType = ''
+    if (raw.responseHeaders) {
+      try {
+        const parsed = JSON.parse(raw.responseHeaders)
+        headers = Object.entries(parsed).map(([name, value]) => ({
+          name,
+          value: Array.isArray(value) ? value.join(', ') : String(value)
+        }))
+        const ct = parsed['Content-Type'] || parsed['content-type'] || ''
+        contentType = Array.isArray(ct) ? ct[0] : ct
+      } catch {
+        // If header parsing fails, leave empty
+      }
+    }
+
+    const statusTexts: Record<number, string> = {
+      200: 'OK', 201: 'Created', 204: 'No Content',
+      301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+      400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden',
+      404: 'Not Found', 405: 'Method Not Allowed', 409: 'Conflict',
+      422: 'Unprocessable Entity', 429: 'Too Many Requests',
+      500: 'Internal Server Error', 502: 'Bad Gateway',
+      503: 'Service Unavailable', 504: 'Gateway Timeout'
+    }
+
+    return {
+      statusCode: raw.responseStatus,
+      statusText: statusTexts[raw.responseStatus] || '',
+      body: raw.responseBody || '',
+      contentType,
+      headers,
+      timeMs: raw.responseTimeMs,
+      sizeBytes: raw.responseSizeBytes
+    } as ApiResponse
   }
 
   // Collections
