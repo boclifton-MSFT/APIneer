@@ -8,11 +8,11 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   icon: {
-    serverBundle: 'local'
+    serverBundle: 'local',
+    localApiEndpoint: '/_nuxt_icon'
   },
 
   routeRules: {
-    '/api/_nuxt_icon/**': {},
     '/api/**': { proxy: 'http://localhost:5000/api/**' }
   }
 })
