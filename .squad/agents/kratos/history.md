@@ -61,6 +61,17 @@
 - **Pre-existing fix:** Fixed bug in RequestBuilder.vue where `req.headers` could be JSON string from API but was assumed to be array. Added fallback JSON.parse handling.
 - **Test results:** All 16 unit tests GREEN (Freeman wrote; Kratos implemented). All 190 total tests pass (16 new + 174 existing). Zero regressions.
 
+### 2025-07-18 — AuthEditor Wiring: Full Auth Integration (GREEN, 20/20 tests)
+- **Wired into:** `RequestBuilder.vue` — replaced "Authentication editor coming soon" placeholder in Auth tab with `<AuthEditor v-model="authConfig" />`
+- **State management:** Added `authConfig` reactive ref (type `AuthConfig = { type: string; [key: string]: any }`, default `{ type: 'none' }`). Synced from `props.request.authConfig` in existing watch with defensive JSON parsing (handles string or object).
+- **Send payload:** `authConfig` serialized to JSON string via `JSON.stringify()` and included in `emit('send', ...)` payload. Updated emit type signature to include `authConfig: string`.
+- **RequestData interface:** Added optional `authConfig?: string` field.
+- **index.vue changes:** Updated `handleSend` to accept and forward `authConfig` in the API payload. Passed through to `updateRequest()` so auth config persists with saved requests.
+- **useApi.ts:** Added `authConfig?: string` to `ApiRequest` interface. No other changes needed — `updateRequest` already accepts `Partial<ApiRequest>`, so authConfig flows through automatically.
+- **AuthEditor styling:** Added scoped CSS matching project patterns — CSS variables for colors (`--ui-border`, `--ui-primary`, `--ui-text`, `--ui-text-muted`), consistent input sizing (0.5rem/0.75rem padding), focus ring with `color-mix`, placeholder muted color.
+- **Pattern:** Auth config stored as JSON string in backend (same as headers). Frontend parses on load, serializes on save. Defensive parsing handles both string and pre-parsed object.
+- **Test results:** All 20 tests pass (13 AuthEditor + 7 RequestBuilder). Zero regressions.
+
 ## Cross-Agent Context (Phase 2)
 
 ### Freeman — Builder UI Tests (RED)
@@ -208,4 +219,15 @@
   - `cursor: grab` / `cursor: grabbing` on draggable items
 - **Architecture:** Native HTML5 drag-and-drop API, no external libraries. Module-level shared ref pattern ensures all nested components see the same drag state. Events bubble up through the recursive tree for parent to handle API calls.
 - **Build passes clean**, 172/172 tests pass, zero regressions
+
+
+## Phase 9: Auth Editor Frontend Wiring (2026-03-31T19:25Z) — ✅ COMPLETE
+
+- **Task:** Wire AuthEditor component into RequestBuilder, connect auth config to send/save API flow, add Nuxt UI styling
+- **Components:**
+  - AuthEditor.vue: type selector (None, Bearer, API Key, Basic, OAuth2), type-specific field editors, defensive JSON parsing
+  - RequestBuilder.vue: authConfig state management, serialization on send/save, integration with API payload
+- **Pattern:** JSON string transport — consistent with headers pattern, defensive parsing prevents crashes
+- **Tests:** 20 frontend tests pass — component unit tests + RequestBuilder integration tests
+- **Status:** AuthEditor fully wired, auth config flowing through API pipeline to backend
 

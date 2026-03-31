@@ -247,3 +247,31 @@
   - Collection list pagination (15 collections, page navigation)
   - Collection deletion with 15 requests + history in reasonable time
 - **Test results:** 380 passed, 0 failed, 8 skipped (pre-existing auth security skips)
+
+### 2026-03-31: Auth-Proxy Integration — AuthConfig Applied on Send
+- **What:** Wired `IAuthHandler` into the `/api/requests/{id}/send` endpoint so auth config stored on requests (and inherited from collections) is applied to outgoing proxy requests before sending
+- **Request CRUD:** `CreateRequestDto` and `UpdateRequestDto` now include `AuthConfig` (JSON string). `MapToResponse` returns it. POST saves it, PUT updates it, GET returns it
+- **Collection auth:** Added `AuthConfig` column to `Collection` model + migration (`AddCollectionAuthConfig`). Collection DTOs updated. `MapCollectionResponse` and `MapCollectionDetail` include it
+- **Send endpoint flow:** Deserializes request-level and collection-level auth configs → calls `IAuthHandler.ResolveAuth()` for inheritance → calls `ApplyAuthAsync()` to inject headers/query params → then sends via proxy engine
+- **Error handling:** `ArgumentException` from missing auth fields → 400. `InvalidOperationException` with "OAuth2" → 502. `HttpRequestException` from failed token fetch → 502. Invalid auth JSON → 400
+- **Auth type "none":** Resolves to null via `ResolveAuth`, skips auth application entirely
+- **Tests:** 10 new integration tests in `tests/APIneer.Api.Tests/Auth/AuthProxyIntegrationTests.cs` — auth round-trip, unsupported type → 400, missing bearer token → 400, missing basic creds → 400, missing API key name → 400, auth "none" → OK, no auth → OK, OAuth2 failure → 502
+- **Test results:** 391 passed, 0 failed, 8 skipped (total 399)
+
+## Phase 9: Auth-Proxy Integration (2026-03-31T19:25Z) — ✅ COMPLETE
+
+- **Task:** Wire auth into proxy endpoint, ensure auth config saved/loaded/applied, implement collection inheritance
+- **Implementation:**
+  - Enhanced POST /api/requests/{id}/send endpoint to deserialize authConfig and apply auth before proxying
+  - AuthHandler.ResolveAuth() implements request + collection-level inheritance logic
+  - Added Collection.AuthConfig column to store collection-level auth as JSON string
+  - Created migration AddCollectionAuthConfig
+- **Error Contract:**
+  - Missing required auth fields → 400 Bad Request
+  - Unsupported auth type → 400 Bad Request
+  - OAuth2 token endpoint failure → 502 Bad Gateway
+  - Invalid auth config JSON → 400 Bad Request
+- **Tests:** 391 backend tests pass (including 10 new auth-proxy integration tests)
+- **Key Decision:** Request-level auth takes precedence; falls back to collection-level if not overridden; type 'none' explicitly disables inheritance
+- **Status:** Auth config flows end-to-end: frontend editor → API save → proxy application, ready for E2E testing
+

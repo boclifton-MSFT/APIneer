@@ -9,6 +9,24 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2026-03-31 — AuthEditor Integration Tests (GREEN)
+- **9 new RequestBuilder integration tests** in `src/ui/tests/components/RequestBuilder.test.ts` (6 auth integration + 1 existing total 13)
+- **4 new AuthEditor edge case tests** in `src/ui/tests/components/AuthEditor.test.ts` (total 17)
+- **All 30 tests GREEN** — Kratos had already wired AuthEditor by the time tests ran
+- **authConfig serialization contract:** `authConfig` in the `send` emit payload is a JSON string (not an object) — matches `RequestData.authConfig?: string`. Tests parse with `JSON.parse()` before asserting.
+- **Test patterns used:**
+  - `clickAuthTab` helper to DRY up tab navigation before auth assertions
+  - `wrapper.findComponent({ name: 'AuthEditor' }).vm.$emit('update:modelValue', ...)` to simulate child emitting v-model update — parent's `authConfig` ref updates correctly via `v-model`
+  - `await nextTick()` after `vm.$emit` to allow Vue reactivity to propagate before asserting props
+  - `wrapper.setProps({ modelValue: emitted })` in AuthEditor tests to simulate parent updating controlled component after type switch
+  - `expect(emitted).not.toHaveProperty('token')` to verify field clearing when type switches
+- **Edge cases covered:**
+  - bearer→basic: emitted config has no token, has username/password; DOM updates after setProps
+  - any→none: emitted config equals `{ type: 'none' }` exactly; all type-specific DOM fields gone
+  - OAuth2 all 4 fields (tokenEndpoint, clientId, clientSecret, scope) emit individually correct values
+  - API Key placement header→query: emitted includes placement='query' and preserves keyName/keyValue
+
+
 ### 2026-03-31 — QueryParamsEditor Tests (GREEN)
 - **18 comprehensive tests** in `src/ui/tests/components/QueryParamsEditor.test.ts`
 - **Test patterns used:**
@@ -99,3 +117,18 @@
 - **2025-07-17 — Phase 6.1 Import/Export tests (RED):** Created 6 files across backend and frontend. **Backend (5 files in `tests/APIneer.Api.Tests/ImportExport/`):** ImportExportTestData.cs (shared helpers, seed methods with workspace+collection+folder+requests, response DTOs for import/export, realistic Postman v2.1 fixtures including flat and deeply nested collections, cURL test fixtures with various flags), PostmanImportTests.cs (15 tests — POST `/api/import/postman` accepts Postman v2.1 JSON, creates APIneer collection with matching structure, preserves method/URL/headers/body, handles nested folders 3+ levels deep, validates invalid JSON/empty body/missing schema→400), CurlImportTests.cs (15 tests — POST `/api/import/curl` accepts cURL command string, parses method -X/URL/headers -H/body -d --data, handles multiline backslash continuation, parses -u basic auth flag to Authorization header, validates empty string/non-curl command→400), ExportTests.cs (16 tests — GET `/api/collections/{id}/export?format=json` for APIneer native format with folders+requests, `format=curl` generates cURL commands per request with headers/body, `format=postman` generates Postman v2.1 schema with nested items, invalid format→400, missing format→400, non-existent collection→404), RoundTripTests.cs (10 tests — JSON export→import preserves collection name/request count/folder count/request details with new IDs, Postman export→import→verify preserves name/count/folders/methods). **Frontend (1 file):** `src/ui/tests/components/ImportModal.test.ts` (11 tests — modal render, file upload area, format selector with Postman/cURL/HAR options, import button disabled when no file, preview area with empty state, hidden when visible=false, close button emits close, cURL text area input). Total: 57 backend tests (56 fail, 1 pass coincidentally — 404 on non-existent collection export), 11 frontend tests fail (component `~/components/import-export/ImportModal.vue` doesn't exist). Key patterns: reuses ApiTestFixture with DB reset, realistic Postman v2.1 JSON fixtures, text/plain content type for cURL import, `data-testid` selectors for frontend.
 
 - **2025-07-17 — Collections UI Enhancement tests (RED):** Created 4 test files in `src/ui/tests/components/` defining frontend collection UI contracts. **CollectionContextMenu.test.ts** (12 tests — renders on right-click, positions at coordinates, shows correct actions per item type: collection gets Rename/Delete/Duplicate/New Folder/New Request/Export; folder gets Rename/Delete/New Sub-folder/New Request; request gets Rename/Delete/Duplicate/Move to...; emits action event with item data, closes after selection, closes on click outside via overlay). **CollectionPicker.test.ts** (10 tests — dropdown with collections, shows folder hierarchy, Default option, emits select with collectionId/folderId, inline vs modal mode, disabled state when empty). **InlineRename.test.ts** (10 tests — display mode shows text, double-click activates edit, input auto-focused, Enter saves emitting rename, Escape cancels emitting cancel, blur saves, empty name reverts without emitting, shows updated name after save). **CollectionSidebar.test.ts** (10 tests — renders collection tree, request count per collection, New Request/New Collection buttons with events, click emits select-request, active request highlighting, empty state, search/filter by name). Total: 42 tests across 4 files — all fail (components at `~/components/collections/{CollectionContextMenu,CollectionPicker,InlineRename,CollectionSidebar}.vue` don't exist). Uses `mount` from `@vue/test-utils` (not `mountSuspended`), `data-testid` selectors. Regressions: 0 — existing 9 passing test files (70 tests) unaffected.
+
+## Phase 9: Auth Integration Testing (2026-03-31T19:25Z) — ✅ COMPLETE
+
+- **Task:** Write comprehensive integration tests for AuthEditor + RequestBuilder edge cases, verify auth pipeline
+- **Test Coverage:** 30 tests covering:
+  - Type selection (None, Bearer, API Key, Basic, OAuth2)
+  - Type-specific field validation (empty token, missing key, missing credentials)
+  - Bidirectional v-model binding with authConfig state
+  - JSON serialization on save/send roundtrip
+  - Defensive parsing: string, object, null, invalid JSON inputs
+  - Edge cases: switching types, special characters, persistence across re-renders
+- **Integration:** Tests verify authConfig flows from AuthEditor → RequestBuilder → emit payload → API
+- **Results:** 30/30 tests GREEN, validates auth config pipeline works end-to-end
+- **Status:** Integration tests complete, auth edge cases covered, ready for backend proxy testing
+

@@ -190,6 +190,31 @@ All tests passing. Phase 1-8 complete.
 **Decision:** Always use Playwright MCP to E2E test UI changes — open the site, click buttons, verify everything works visually. Don't rely solely on unit tests.  
 **Rationale:** User request — captured for team memory. Ensures visual correctness beyond snapshot/unit coverage.
 
+### Auth Config Frontend Wiring Pattern (2026-03-31)
+**By:** Kratos (Frontend Dev)  
+**Decision:** Auth config follows the same serialization pattern as headers: stored as a JSON string in the backend `ApiRequest.AuthConfig` field, parsed defensively on the frontend when loading a request, and serialized back to JSON string on save/send.  
+**Details:**
+- `RequestBuilder.vue` owns `authConfig` as reactive state (`{ type: 'none' }` default)
+- On load: parse `request.authConfig` from JSON string (defensive — handles string, object, null, invalid JSON)
+- On send/save: serialize to JSON string in the emit payload
+- `index.vue` passes the serialized `authConfig` string through to `updateRequest()` before sending
+- Backend `AuthHandler` handles deserialization and applies auth to outgoing proxy requests  
+**Rationale:** Consistent with the existing `headers` pattern — JSON string transport between frontend and backend. Defensive parsing prevents crashes from malformed data. The backend owns auth application logic; frontend only manages the config editing and persistence.  
+**Impact:** Future auth-related UI features (inherit from collection, per-folder auth) should follow this same pattern. Backend `AuthConfig` schema changes will require updating the `AuthEditor.vue` fields.
+
+### Auth-Proxy Integration (2026-03-31)
+**By:** Marcus (Backend Dev)  
+**Decision:** The `/api/requests/{id}/send` endpoint now resolves and applies auth configuration before proxying. Auth flows through three layers:
+1. **Request-level auth** — stored as JSON string in `ApiRequest.AuthConfig`
+2. **Collection-level auth** — stored as JSON string in `Collection.AuthConfig` (new column + migration)
+3. **Resolution** — `IAuthHandler.ResolveAuth()` picks request auth if present, falls back to collection auth, returns null if request explicitly sets type "none"  
+**Error Contract:**
+- Missing required auth fields (e.g. bearer with no token) → **400 Bad Request**
+- Unsupported auth type → **400 Bad Request**
+- OAuth2 token endpoint failure (network or HTTP error) → **502 Bad Gateway**
+- Invalid auth config JSON → **400 Bad Request**  
+**Impact:** Frontend (Kratos) can now send `authConfig` as JSON string in request create/update payloads. The send button will automatically apply auth. Collection-level auth is inherited by requests that don't override it. Tests (Freeman): 10 new integration tests cover the auth-proxy flow. All 391 tests pass. Security (Payne): Auth secrets still stored as JSON strings in SQLite — encryption at rest (P5-001) is a separate concern tracked in Phase 1.5.
+
 ## Governance
 
 - All meaningful changes require team consensus
