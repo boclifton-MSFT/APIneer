@@ -271,3 +271,22 @@
 - **Styling:** Scoped CSS matching HeadersEditor pattern — same table layout, input sizing, button styling, `var(--ui-*)` CSS variables
 - **Tests:** All 18 pass (9 original + 9 new form-data tests). Zero regressions.
 
+### 2025-07-19 — Phase 2 MCP: Navigation + Connection UI (GREEN, 209/209 tests)
+- **Nav item added:** `dashboard.vue` — added "MCP" nav item with `i-lucide-plug` icon, route `/mcp`, positioned after Environments
+- **Page created:** `app/pages/mcp.vue` — full two-panel dashboard layout following environments.vue pattern
+  - **Left panel:** Server list with loading spinner, empty state (icon + "No MCP servers configured" + CTA), server items with name/transport badge/status dot/hover-reveal delete
+  - **Right panel:** Selected server detail with connection form + capability tabs
+  - **Connection form:** Server name, transport type radio selector (stdio/Streamable HTTP), type-conditional fields (command/args/env vars for stdio, URL for HTTP), Connect/Disconnect buttons styled like Send button, live status indicator (🔴/🟡/🟢)
+  - **Env vars editor:** Replicates HeadersEditor key-value table pattern with add/remove rows
+  - **Capability tabs:** Tools/Resources/Prompts with placeholder content, connected/disconnected states
+  - **New Server modal:** UModal with name + transport type + type-specific fields
+- **API methods added to `useApi.ts`:**
+  - Types: `McpServerConfig`, `McpTool`, `McpResource`, `McpPrompt`
+  - Server configs: `getServerConfigs`, `createServerConfig`, `updateServerConfig`, `deleteServerConfig`
+  - Connection: `mcpConnect`, `mcpDisconnect`, `mcpStatus`
+  - Operations: `mcpListTools`, `mcpCallTool`, `mcpListResources`, `mcpReadResource`, `mcpListPrompts`, `mcpGetPrompt`, `mcpPing`
+- **Styling:** Scoped CSS with CSS variables for dark mode, transport badges (purple for stdio, blue for HTTP), `rgba(128,128,128,0.08)` hover backgrounds, smooth transitions
+- **Pattern:** Transport type selector uses hidden radio inputs + styled labels with `.active` class — visually toggle-like but semantically correct. Env vars stored as JSON string (same pattern as headers).
+- **Tests:** All 209 pass, zero regressions. Backend endpoints not yet built (Marcus) — UI structure is wired and ready.
+
+

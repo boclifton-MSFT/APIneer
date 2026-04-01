@@ -246,6 +246,25 @@
   - Collection duplication with 20 requests in reasonable time
   - Collection list pagination (15 collections, page navigation)
   - Collection deletion with 15 requests + history in reasonable time
+
+### 2026-04-01: MCP Client Proxy — Full Implementation
+- **New directory:** `src/api/APIneer.Api/Mcp/` with 5 files:
+  - `McpJsonRpc.cs` — JSON-RPC 2.0 message types (request, notification, response, error)
+  - `IMcpTransport.cs` — transport abstraction (SendRequest + SendNotification)
+  - `StdioMcpTransport.cs` — spawns child process, writes JSON-RPC on stdin, reads responses from stdout with ID-matching, 30s timeout, proper process cleanup
+  - `HttpMcpTransport.cs` — POST JSON-RPC to URL, handles both JSON and SSE responses, MCP-Session-Id tracking, protocol version header
+  - `McpConnection.cs` — manages single connection lifecycle (initialize → operate → disconnect), exposes tools/list, tools/call, resources/list, resources/read, prompts/list, prompts/get, ping
+  - `McpConnectionManager.cs` — singleton managing multiple connections by GUID, creates transports, DI-registered
+- **New model:** `Models/McpServerConfig.cs` — persisted server configs (name, transportType, command, args, envVars, url)
+- **DbContext:** Added `McpServerConfigs` DbSet + entity config with column constraints
+- **Migration:** `AddMcpServerConfigs` — creates the MCP server config table
+- **13 API endpoints** under `/api/mcp/`:
+  - CRUD for server configs (POST/GET/PUT/DELETE `/api/mcp/servers`)
+  - Connect/disconnect/status for live connections
+  - Proxy endpoints for tools, resources, prompts, ping
+- **Error handling:** JSON-RPC errors returned as structured 502; validation errors as 400; transport failures as 502
+- **Test fixture:** Updated `ApiTestFixture.CreateClient()` to clear `McpServerConfigs` table
+- **All 391 existing tests passing** — zero regressions
 - **Test results:** 380 passed, 0 failed, 8 skipped (pre-existing auth security skips)
 
 ### 2026-03-31: Auth-Proxy Integration — AuthConfig Applied on Send

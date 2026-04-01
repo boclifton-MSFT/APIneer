@@ -234,6 +234,24 @@ All tests passing. Phase 1-8 complete.
 
 **Impact:** `CollectionSidebar` now emits `rename-request` — any parent consuming this component must handle it. `CollectionTreeFolder` does NOT yet support inline rename for folder-level requests. Future work if needed.
 
+### MCP Client Proxy Architecture (2026-04-01)
+
+**By:** Marcus (Backend Dev)  
+**Status:** Active  
+**Decision:** MCP client proxy uses a **singleton `McpConnectionManager`** that holds active `McpConnection` instances keyed by GUID. Connections are ephemeral (in-memory only), while server configs are persisted in SQLite via `McpServerConfig`. Two transport implementations: `StdioMcpTransport` (spawn process, JSON-RPC over stdin/stdout) and `HttpMcpTransport` (POST JSON-RPC to URL, supports SSE).
+
+**Key Design Choices:**
+1. **Transport abstraction (`IMcpTransport`)** — stdio and HTTP share the same interface. Adding new transports (e.g., WebSocket) only requires implementing the interface.
+2. **Connection ≠ Config** — Server configs are CRUD'd independently. A connection references a config ID but can also be created inline without saving. This lets the frontend test servers before persisting.
+3. **Request ID tracking** — stdio transport uses `ConcurrentDictionary<int, TaskCompletionSource>` to match async responses to requests. 30-second timeout per request.
+4. **Error contract** — JSON-RPC errors from MCP servers are returned as structured `{ error: { code, message } }` with HTTP 502. Validation errors return 400. This matches the existing proxy error pattern.
+5. **No background keep-alive** — connections live as long as the manager holds them. Frontend must reconnect if the server drops. Future enhancement: ping-based health checks.
+
+**Impact:**
+- Frontend (Kratos): 13 new `/api/mcp/*` endpoints available for MCP UI integration
+- Tests (Freeman): MCP server config CRUD can be tested with standard API test patterns. Transport/connection tests will need mock MCP servers.
+- Security (Payne): Stdio transport spawns child processes — environment variables may contain secrets. Review needed when secrets management is integrated.
+
 ## Governance
 
 - All meaningful changes require team consensus
