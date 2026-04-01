@@ -221,6 +221,19 @@ All tests passing. Phase 1-8 complete.
 **Rationale:** Matches the HTTP standard for `application/x-www-form-urlencoded` content type. Backend can use the serialized string directly as request body. Consistent with QueryParamsEditor's manual encoding approach. Handles special characters, `+` as space, and edge cases.  
 **Impact:** Future multipart/form-data support (file uploads) will need a different approach. The `modelValue` string contract remains unchanged — all body modes emit a plain string.
 
+### CollectionSidebar: Collapse/Expand + Inline Rename (2025-07-18)
+**By:** Kratos (Frontend Dev)  
+**Decision:** 
+1. **Collapse/Expand** uses a reactive `Set<string>` of collapsed collection IDs. All collections start expanded. `v-show` (not `v-if`) hides content to preserve drag-drop DOM state. Chevron rotation uses CSS `transform: rotate(90deg)` with a 200ms transition.
+2. **Inline Rename** reuses the existing `InlineRename.vue` component (double-click → input → Enter/Escape). The `rename-request` event bubbles from `CollectionSidebar` to `index.vue`, which calls `api.updateRequest()` to persist.
+
+**Rationale:**
+- `v-show` over `v-if`: drag-drop relies on DOM elements being present. `v-if` would destroy and recreate them, breaking mid-drag state.
+- `InlineRename` reuse: avoids duplicating double-click-to-edit logic. Component already handles focus, select-all, blur-save, escape-cancel.
+- Double-click for rename: single-click selects the request, drag initiates move. Double-click is the only safe trigger that doesn't conflict.
+
+**Impact:** `CollectionSidebar` now emits `rename-request` — any parent consuming this component must handle it. `CollectionTreeFolder` does NOT yet support inline rename for folder-level requests. Future work if needed.
+
 ## Governance
 
 - All meaningful changes require team consensus

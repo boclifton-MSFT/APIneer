@@ -9,6 +9,28 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2025-07-18: Delete Request from Sidebar (209/209 tests GREEN)
+- **Feature:** Added hover-reveal trash icon on request items in sidebar. Clicking shows a confirmation modal, then deletes via API.
+- **CollectionSidebar.vue:** Added `delete-request` emit with `{ requestId, requestName }`. Added `<button class="delete-icon">` with `<UIcon name="i-lucide-trash-2">` inside each `.request-item`. Uses `@click.stop` to prevent triggering selection or drag. CSS: `.delete-icon` is `opacity: 0` by default, `.request-item:hover .delete-icon` sets `opacity: 1`, icon turns red on `:hover`.
+- **CollectionTreeFolder.vue:** Same trash icon pattern for requests inside folders. Added `delete-request` emit, forwarded from recursive sub-folders.
+- **index.vue:** Added `showDeleteRequestModal` + `deleteTarget` refs. `onDeleteRequest` opens a `<UModal>` confirmation ("Delete '{name}'? This action cannot be undone.") with Cancel (ghost) and Delete (error/red) buttons. On confirm: calls `api.deleteRequest()`, reloads collections + requests, clears selection if deleted was active, shows "Request deleted" toast.
+- **useApi.ts:** `deleteRequest` already existed — DELETE to `/api/requests/{id}`. No changes needed.
+- **Pattern:** For hover-reveal action icons on list items, use `opacity: 0` on the icon + `.parent:hover .icon { opacity: 1 }` with CSS transition. Always use `@click.stop` to isolate from parent click handlers. Always use `<button>` for accessibility.
+
+### 2025-07-18: Collection Inline Rename (209/209 tests GREEN)
+- **Feature:** Added inline rename to collection names in sidebar. Double-click collection name → edit inline → Enter saves → persists via API. Same UX pattern as request rename.
+- **CollectionSidebar.vue:** Replaced static `<span class="collection-name">` with `<InlineRename>` component. Added `rename-collection` emit with `{ collectionId, name }`. InlineRename was already imported.
+- **index.vue:** Added `@rename-collection="renameCollection"` handler that calls `api.updateCollection()`, reloads collections, and shows "Collection renamed" toast.
+- **useApi.ts:** Added `updateCollection(id, data)` method — PUT to `/api/collections/{id}`.
+- **Click conflict fix:** Added `@click.stop` to InlineRename's `<input>` element to prevent clicks during editing from bubbling up and toggling collection collapse. Added `@dblclick.stop` on the display span so double-click to rename doesn't also bubble to the header. Single-click on collection name still bubbles normally for collapse/expand.
+- **Pattern:** When embedding InlineRename inside a clickable parent (like collection-header with toggle), the input must stop click propagation to avoid parent side-effects during editing.
+
+### 2025-07-18: CollectionSidebar Collapse/Expand + Inline Rename (11/11 tests GREEN)
+- **Collapse/Expand:** Added reactive `collapsedCollections` Set to track collapsed state. All collections start expanded. Clicking the collection header toggles collapse. Requests/folders wrapped in `v-show` for performance (keeps DOM alive for drag-drop). Chevron rotates 90° via `.chevron-expanded` CSS class with `transition: transform 0.2s ease`.
+- **Inline Rename:** Replaced static `<span class="request-name">` with `<InlineRename>` component. Double-click triggers edit mode; Enter saves, Escape cancels. Emits `rename-request` with `{ requestId, name }`. Wired in `index.vue` to call `api.updateRequest()` and reload collections/requests.
+- **Pattern:** Used `v-show` instead of `v-if` for collapse to preserve drag-drop DOM state. `InlineRename` uses `@dblclick` which doesn't interfere with single-click request selection or drag-start.
+- **Key decision:** `data-testid="request-name-${request.id}"` placed on InlineRename component root for test targeting.
+
 ### 2025-07-18: CollectionSidebar & CollectionTreeFolder Visual Polish (24/24 tests GREEN)
 - **Problem:** Sidebar tree was flat, unstyled text with no visual hierarchy — "GETUntitled Request" smushed together, no icons, no hover/active states, no separators.
 - **CollectionSidebar.vue changes:** Added `<UIcon>` for folder + chevron icons in collection headers. Added `:class="'method-' + request.method.toLowerCase()"` binding to method badges for color coding. Full scoped CSS: collection-node separators, collection-header flex layout with hover, collection-count pill badge, request-item indent + hover + active left-border accent, method-badge monospace/color-coded (GET=green, POST=blue, PUT=orange, PATCH=purple, DELETE=red), request-name truncation, sidebar-search focus ring, empty-state centered layout.
