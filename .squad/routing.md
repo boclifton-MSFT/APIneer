@@ -12,6 +12,8 @@ How to decide who handles what.
 | Code review | Geralt | Review PRs, check quality, suggest improvements |
 | Testing, QA, coverage | Freeman | Write tests, find edge cases, verify fixes, CI setup |
 | Security, auth, credentials | Payne | Auth flows, credential storage, vulnerability scanning, security reviews |
+| C#/.NET code optimization | Arthur | Modern C# features, .NET performance, EF Core optimization, code simplification |
+| TypeScript/Vue/Nuxt optimization | Dutch | Modern TS features, Vue 3 patterns, Nuxt 4 idioms, frontend performance |
 | Scope & priorities | Geralt | What to build next, trade-offs, decisions |
 | Session logging | Scribe | Automatic — never needs routing |
 

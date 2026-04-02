@@ -39,6 +39,22 @@
       "created_at": "2026-03-30T21:41:04Z",
       "legacy_named": false,
       "status": "active"
+    },
+    {
+      "persistent_name": "Arthur",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "C#/.NET Optimization Expert",
+      "created_at": "2026-04-02T14:41:49Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    {
+      "persistent_name": "Dutch",
+      "universe": "Video Game Protagonists (Non-Nintendo)",
+      "role": "TypeScript/Vue Optimization Expert",
+      "created_at": "2026-04-02T14:41:49Z",
+      "legacy_named": false,
+      "status": "active"
     }
   ]
 }

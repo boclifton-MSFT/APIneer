@@ -1,0 +1,7 @@
+Add Arthur and Dutch as optimization experts
+
+Arthur: C#/.NET Optimization Expert
+Dutch: TypeScript/Vue Optimization Expert
+Both from Red Dead Redemption 2 universe
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

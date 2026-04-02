@@ -9,7 +9,9 @@
         { "name": "Kratos", "role": "Frontend Dev", "source": "God of War" },
         { "name": "Marcus", "role": "Backend Dev", "source": "Borderlands" },
         { "name": "Freeman", "role": "Tester", "source": "Half-Life" },
-        { "name": "Payne", "role": "Security Specialist", "source": "Max Payne" }
+        { "name": "Payne", "role": "Security Specialist", "source": "Max Payne" },
+        { "name": "Arthur", "role": "C#/.NET Optimization Expert", "source": "Red Dead Redemption 2" },
+        { "name": "Dutch", "role": "TypeScript/Vue Optimization Expert", "source": "Red Dead Redemption 2" }
       ]
     }
   ]

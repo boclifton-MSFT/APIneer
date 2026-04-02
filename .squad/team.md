@@ -17,6 +17,8 @@
 | Marcus | Backend Dev | `.squad/agents/marcus/charter.md` | 🔧 Backend |
 | Freeman | Tester | `.squad/agents/freeman/charter.md` | 🧪 Tester |
 | Payne | Security Specialist | `.squad/agents/payne/charter.md` | 🔒 Security |
+| Arthur | C#/.NET Optimization Expert | `.squad/agents/arthur/charter.md` | 🔍 Optimizer |
+| Dutch | TypeScript/Vue Optimization Expert | `.squad/agents/dutch/charter.md` | 🔍 Optimizer |
 | Scribe | Scribe | `.squad/agents/scribe/charter.md` | 📋 Scribe |
 | Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | 🔄 Monitor |
 

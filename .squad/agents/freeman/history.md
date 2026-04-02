@@ -146,3 +146,14 @@
 - **Results:** 30/30 tests GREEN, validates auth config pipeline works end-to-end
 - **Status:** Integration tests complete, auth edge cases covered, ready for backend proxy testing
 
+
+
+### MCP Page Tests (GREEN — 2025-07-18)
+- **15 tests** written in `src/ui/tests/components/McpPage.test.ts`. All 15 GREEN on first run (after one text assertion fix).
+- **Module mocking pattern for Nuxt pages:** Use `vi.hoisted()` + `vi.mock('~/composables/useApi', ...)` to mock auto-imported composables. `vi.hoisted` creates variables available inside the hoisted mock factory AND the test body — essential for per-test mock control via `mockResolvedValue`.
+- **Page-level test helpers:** Use `flushPromises()` from `@vue/test-utils` after `mountSuspended` to let `onMounted` async calls (like `loadServers()`) settle before asserting DOM state.
+- **Selecting a server:** The page renders connection form + tabs only when a server is selected (`v-else` block). Tests that need this state use a `mountWithServerSelected()` helper that mocks `getServerConfigs` with sample servers, mounts + flushes, then `.trigger('click')` on `.server-item[0]`.
+- **Teleported modal content:** `UModal` in Nuxt UI v4 teleports to `document.body`. Use `document.body.querySelectorAll('input[placeholder="..."]')` to find modal inputs — `wrapper.find()` won't reach them.
+- **Nuxt UI placeholder text:** `UDashboardPanel` renders its own "not connected" placeholder that doesn't exactly match the template string. Assert loosely (`toContain('Connect to')`) rather than matching the full template interpolation.
+- **Connect/Disconnect buttons:** Plain `<button class="connect-button">` / `<button class="disconnect-button">` — use `.find('.connect-button')` / `.find('.disconnect-button')`. Both are in the `v-else` panel, so a server must be selected first.
+- **Test groups:** Server List (7-9), Connection Form (1-6), Capability Tabs (10-12), Integration (13-15).

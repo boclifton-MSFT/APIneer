@@ -289,4 +289,15 @@
 - **Pattern:** Transport type selector uses hidden radio inputs + styled labels with `.active` class — visually toggle-like but semantically correct. Env vars stored as JSON string (same pattern as headers).
 - **Tests:** All 209 pass, zero regressions. Backend endpoints not yet built (Marcus) — UI structure is wired and ready.
 
+### 2025-07-19 — Phase 3 MCP: Capability Browser UI (GREEN, 209/209 tests)
+- **Feature:** Replaced placeholder capability tabs in `mcp.vue` with fully interactive Tools/Resources/Prompts browser and request/response history panel
+- **Tools tab:** Fetches tool list via `mcpListTools`, clickable list with selection highlight, auto-generated form fields from `inputSchema` (string→text, number→number, boolean→checkbox, object/array→JSON textarea), required field red asterisks, "Call Tool" button with loading state, result display supporting text/image/resource content types, error styling for `isError: true`, collapsible Raw JSON view
+- **Resources tab:** Fetches resource list via `mcpListResources`, each row shows name/URI/mimeType badge/description with "Read" button, per-resource loading state, content display handles text/JSON/image, Raw JSON toggle
+- **Prompts tab:** Fetches prompt list via `mcpListPrompts`, clickable with argument count badge, form auto-generated from `arguments` array, "Get Prompt" button, result renders messages with role badges (user=blue, assistant=green, system=gray), Raw JSON toggle
+- **Request History panel:** Collapsible bottom section tracking last 50 JSON-RPC entries, each entry shows timestamp/method/status badge, click to expand full request/response JSON. Uses `addRpcEntry()` helper called from all API methods.
+- **Auto-fetch behavior:** `watch(connectionState)` resets all capability state and fetches tools on new connection. `watch(activeTab)` fetches on tab activation when data is empty.
+- **Refresh button:** Each tab has a refresh UButton that re-fetches the list.
+- **Styling patterns:** `.cap-*` prefixed classes for all capability UI. Uses existing CSS variable patterns (`--ui-primary`, `--ui-border`, `--ui-text-muted`). `color-mix()` for selected state backgrounds. `rgba(128,128,128,0.08)` hover backgrounds. Monospace font for code blocks and URIs. History panel with max-height scroll. Role badges with type-specific colors. Dark mode handled via `:root.dark` selectors where needed.
+- **Key pattern:** Tool form generation iterates `inputSchema.properties` entries with type-dispatched input elements. Args are processed (type-converted) before sending to API — numbers parsed via `Number()`, objects/arrays via `JSON.parse()` with fallback.
+- **Tests:** All 209 pass, zero regressions.
 
