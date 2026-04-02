@@ -28,19 +28,11 @@ public interface ICredentialProtector
 /// <summary>
 /// Implementation using .NET DPAPI for platform-specific encryption.
 /// </summary>
-public class CredentialProtector : ICredentialProtector
+public class CredentialProtector(IDataProtectionProvider provider, ILogger<CredentialProtector> logger) : ICredentialProtector
 {
-    private readonly IDataProtectionProvider _provider;
-    private readonly IDataProtector _protector;
-    private readonly ILogger<CredentialProtector> _logger;
-    private const string DataProtectionPurpose = "APIneer.CredentialProtection";
-
-    public CredentialProtector(IDataProtectionProvider provider, ILogger<CredentialProtector> logger)
-    {
-        _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        _protector = provider.CreateProtector(DataProtectionPurpose);
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
+    private readonly IDataProtector _protector = (provider ?? throw new ArgumentNullException(nameof(provider)))
+        .CreateProtector("APIneer.CredentialProtection");
+    private readonly ILogger<CredentialProtector> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public byte[] Encrypt(string plaintext)
     {

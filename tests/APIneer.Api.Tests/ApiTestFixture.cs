@@ -44,15 +44,19 @@ public class ApiTestFixture : WebApplicationFactory<Program>, IAsyncLifetime
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Assertions.RemoveRange(db.Assertions);
-        db.RequestHistory.RemoveRange(db.RequestHistory);
-        db.ApiRequests.RemoveRange(db.ApiRequests);
-        db.CollectionFolders.RemoveRange(db.CollectionFolders);
-        db.Collections.RemoveRange(db.Collections);
-        db.EnvironmentVariables.RemoveRange(db.EnvironmentVariables);
-        db.Environments.RemoveRange(db.Environments);
-        db.Workspaces.RemoveRange(db.Workspaces);
-        db.SaveChanges();
+
+        // Disable FK checks so self-referencing tables (CollectionFolders) can be bulk-deleted
+        db.Database.ExecuteSqlRaw("PRAGMA foreign_keys = OFF");
+        db.Assertions.ExecuteDelete();
+        db.RequestHistory.ExecuteDelete();
+        db.ApiRequests.ExecuteDelete();
+        db.CollectionFolders.ExecuteDelete();
+        db.Collections.ExecuteDelete();
+        db.EnvironmentVariables.ExecuteDelete();
+        db.Environments.ExecuteDelete();
+        db.McpServerConfigs.ExecuteDelete();
+        db.Workspaces.ExecuteDelete();
+        db.Database.ExecuteSqlRaw("PRAGMA foreign_keys = ON");
         return base.CreateClient();
     }
 

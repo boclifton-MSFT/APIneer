@@ -166,7 +166,7 @@ function onInheritChange(event: Event) {
 
     <!-- Inherit toggle -->
     <template v-if="showInherit">
-      <label>
+      <label class="auth-inherit-label">
         <input
           data-testid="auth-inherit-toggle"
           type="checkbox"
@@ -178,3 +178,45 @@ function onInheritChange(event: Event) {
     </template>
   </div>
 </template>
+
+<style scoped>
+.auth-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-editor select,
+.auth-editor input[type="text"],
+.auth-editor input[type="password"],
+.auth-editor input:not([type]) {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--ui-border, #e5e7eb);
+  border-radius: 0.375rem;
+  background: var(--ui-bg, #fff);
+  color: var(--ui-text, #111827);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.auth-editor select:focus,
+.auth-editor input:focus {
+  border-color: var(--ui-primary, #2563eb);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary, #2563eb) 20%, transparent);
+}
+
+.auth-editor input::placeholder {
+  color: var(--ui-text-muted, #6b7280);
+}
+
+.auth-inherit-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--ui-text-muted, #6b7280);
+  cursor: pointer;
+}
+</style>

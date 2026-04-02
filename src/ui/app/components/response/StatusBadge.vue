@@ -1,15 +1,13 @@
 <script setup lang="ts">
+import { statusSeverity } from '~/composables/useHttpColors'
+
 const props = defineProps<{
   statusCode: number
   statusText: string
 }>()
 
 const statusClass = computed(() => {
-  const code = props.statusCode
-  if (code >= 200 && code < 300) return 'status-success'
-  if (code >= 300 && code < 400) return 'status-info'
-  if (code >= 400 && code < 500) return 'status-warning'
-  return 'status-error'
+  return `status-${statusSeverity(props.statusCode)}`
 })
 </script>
 

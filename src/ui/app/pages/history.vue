@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { HistoryEntry } from '~/composables/useApi'
+import { methodColor, statusSeverity } from '~/composables/useHttpColors'
 
 definePageMeta({
   layout: 'dashboard'
@@ -14,11 +15,11 @@ const loading = ref(false)
 const selectedEntry = ref<HistoryEntry | null>(null)
 
 const columns = [
-  { key: 'method', label: 'Method' },
-  { key: 'url', label: 'URL' },
-  { key: 'statusCode', label: 'Status' },
-  { key: 'timeMs', label: 'Time' },
-  { key: 'createdAt', label: 'Date' }
+  { accessorKey: 'method', header: 'Method' },
+  { accessorKey: 'url', header: 'URL' },
+  { accessorKey: 'statusCode', header: 'Status' },
+  { accessorKey: 'timeMs', header: 'Time' },
+  { accessorKey: 'createdAt', header: 'Date' }
 ]
 
 async function loadHistory() {
@@ -58,21 +59,6 @@ function formatDate(dateStr: string) {
 function formatTime(ms: number) {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(2)}s`
-}
-
-function statusColor(code: number) {
-  if (code >= 200 && code < 300) return 'success'
-  if (code >= 300 && code < 400) return 'info'
-  if (code >= 400 && code < 500) return 'warning'
-  return 'error'
-}
-
-function methodColor(method: string) {
-  const colors: Record<string, string> = {
-    GET: 'success', POST: 'info', PUT: 'warning',
-    PATCH: 'warning', DELETE: 'error', HEAD: 'secondary', OPTIONS: 'neutral'
-  }
-  return colors[method] || 'neutral'
 }
 
 onMounted(() => {
@@ -128,7 +114,7 @@ onMounted(() => {
             <span class="font-mono text-xs truncate max-w-xs block">{{ row.original.url }}</span>
           </template>
           <template #statusCode-cell="{ row }">
-            <UBadge :label="String(row.original.statusCode)" :color="statusColor(row.original.statusCode)" variant="subtle" size="sm" />
+            <UBadge :label="String(row.original.statusCode)" :color="statusSeverity(row.original.statusCode)" variant="subtle" size="sm" />
           </template>
           <template #timeMs-cell="{ row }">
             <span class="text-sm text-muted">{{ formatTime(row.original.timeMs) }}</span>
@@ -149,7 +135,7 @@ onMounted(() => {
               <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span class="text-muted">Status:</span>
-                  <UBadge :label="`${selectedEntry.statusCode} ${selectedEntry.statusText}`" :color="statusColor(selectedEntry.statusCode)" variant="subtle" class="ml-2" />
+                  <UBadge :label="`${selectedEntry.statusCode} ${selectedEntry.statusText}`" :color="statusSeverity(selectedEntry.statusCode)" variant="subtle" class="ml-2" />
                 </div>
                 <div>
                   <span class="text-muted">Time:</span>

@@ -103,11 +103,7 @@ public sealed class ProxyEngine(IHttpClientFactory httpClientFactory) : IProxyEn
 
                 if (request.FollowRedirects && isRedirect && redirectCount < MaxRedirects)
                 {
-                    redirectChain?.Add(new RedirectEntry
-                    {
-                        Url = currentUrl,
-                        StatusCode = statusCode
-                    });
+                    redirectChain?.Add(new RedirectEntry(currentUrl, statusCode));
 
                     var location = response.Headers.Location!;
                     currentUrl = location.IsAbsoluteUri
@@ -286,6 +282,6 @@ public sealed class ProxyEngine(IHttpClientFactory httpClientFactory) : IProxyEn
         {
             StatusCode = 0,
             ResponseTimeMs = stopwatch.ElapsedMilliseconds,
-            Error = new ProxyError { Code = code, Message = message }
+            Error = new ProxyError(code, message)
         };
 }

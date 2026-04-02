@@ -6,24 +6,16 @@ interface HeaderEntry {
   value: string
 }
 
-const props = withDefaults(defineProps<{
-  modelValue?: HeaderEntry[]
-}>(), {
-  modelValue: () => [{ key: '', value: '' }]
-})
+const model = defineModel<HeaderEntry[]>({ default: () => [{ key: '', value: '' }] })
 
-const emit = defineEmits<{
-  'update:modelValue': [value: HeaderEntry[]]
-}>()
+const internalHeaders = ref<HeaderEntry[]>([...model.value.map(h => ({ ...h }))])
 
-const internalHeaders = ref<HeaderEntry[]>([...props.modelValue.map(h => ({ ...h }))])
-
-watch(() => props.modelValue, (newVal) => {
+watch(model, (newVal) => {
   internalHeaders.value = newVal.map(h => ({ ...h }))
 }, { deep: true })
 
 function emitUpdate() {
-  emit('update:modelValue', internalHeaders.value.map(h => ({ ...h })))
+  model.value = internalHeaders.value.map(h => ({ ...h }))
 }
 
 function addHeader() {

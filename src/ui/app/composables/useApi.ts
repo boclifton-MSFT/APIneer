@@ -1,5 +1,3 @@
-import type { UseFetchOptions } from 'nuxt/app'
-
 export interface ApiRequest {
   id: string
   name: string
@@ -8,6 +6,7 @@ export interface ApiRequest {
   headers?: { key: string; value: string }[]
   body?: string
   bodyType?: string
+  authConfig?: string
   collectionId?: string | null
 }
 
@@ -71,6 +70,37 @@ export interface EnvironmentVariable {
   value: string
   isSecret: boolean
   environmentId: string
+}
+
+// MCP Types
+export interface McpServerConfig {
+  id: string
+  name: string
+  transportType: 'stdio' | 'streamable-http'
+  command?: string
+  args?: string
+  environmentVariables?: string
+  url?: string
+  headers?: string
+}
+
+export interface McpTool {
+  name: string
+  description?: string
+  inputSchema?: any
+}
+
+export interface McpResource {
+  uri: string
+  name: string
+  description?: string
+  mimeType?: string
+}
+
+export interface McpPrompt {
+  name: string
+  description?: string
+  arguments?: any[]
 }
 
 /**
@@ -158,12 +188,20 @@ export function useApi() {
 
   // Collections
   async function getCollections() {
-    return await $fetch<Collection[]>('/api/collections')
+    const response = await $fetch<{ items: Collection[], page: number, pageSize: number, totalCount: number }>('/api/collections')
+    return response.items
   }
 
   async function createCollection(data: { name: string; description?: string }) {
     return await $fetch<Collection>('/api/collections', {
       method: 'POST',
+      body: data
+    })
+  }
+
+  async function updateCollection(id: string, data: Partial<Collection>) {
+    return await $fetch<Collection>(`/api/collections/${id}`, {
+      method: 'PUT',
       body: data
     })
   }
@@ -227,6 +265,98 @@ export function useApi() {
     return await $fetch(`/api/environments/${environmentId}/variables/${variableId}`, { method: 'DELETE' })
   }
 
+  // Collection drag-drop
+  async function moveRequest(requestId: string, target: { collectionId: string; folderId?: string | null }) {
+    return await $fetch(`/api/requests/${requestId}/move`, {
+      method: 'PATCH',
+      body: target
+    })
+  }
+
+  async function reorderCollection(collectionId: string, items: { id: string; sortOrder: number }[]) {
+    return await $fetch(`/api/collections/${collectionId}/reorder`, {
+      method: 'PATCH',
+      body: { items }
+    })
+  }
+
+  // MCP Server Configs
+  async function getServerConfigs() {
+    return await $fetch<McpServerConfig[]>('/api/mcp/servers')
+  }
+
+  async function createServerConfig(data: Partial<McpServerConfig>) {
+    return await $fetch<McpServerConfig>('/api/mcp/servers', {
+      method: 'POST',
+      body: data
+    })
+  }
+
+  async function updateServerConfig(id: string, data: Partial<McpServerConfig>) {
+    return await $fetch<McpServerConfig>(`/api/mcp/servers/${id}`, {
+      method: 'PUT',
+      body: data
+    })
+  }
+
+  async function deleteServerConfig(id: string) {
+    return await $fetch(`/api/mcp/servers/${id}`, { method: 'DELETE' })
+  }
+
+  // MCP Connection
+  async function mcpConnect(config: { serverId?: string; transportType: string; command?: string; args?: string; env?: Record<string, string>; url?: string; headers?: Record<string, string> }) {
+    return await $fetch<{ connectionId: string; capabilities: any; serverInfo: any }>('/api/mcp/connect', {
+      method: 'POST',
+      body: config
+    })
+  }
+
+  async function mcpDisconnect(connectionId: string) {
+    return await $fetch<void>(`/api/mcp/connections/${connectionId}`, { method: 'DELETE' })
+  }
+
+  async function mcpStatus(connectionId: string) {
+    return await $fetch<{ state: string; capabilities: any; serverInfo: any }>(`/api/mcp/connections/${connectionId}/status`)
+  }
+
+  // MCP Operations
+  async function mcpListTools(connectionId: string) {
+    return await $fetch<{ tools: McpTool[] }>(`/api/mcp/connections/${connectionId}/tools`)
+  }
+
+  async function mcpCallTool(connectionId: string, name: string, args: Record<string, any>) {
+    return await $fetch<any>(`/api/mcp/connections/${connectionId}/tools/${name}`, {
+      method: 'POST',
+      body: args
+    })
+  }
+
+  async function mcpListResources(connectionId: string) {
+    return await $fetch<{ resources: McpResource[] }>(`/api/mcp/connections/${connectionId}/resources`)
+  }
+
+  async function mcpReadResource(connectionId: string, uri: string) {
+    return await $fetch<any>(`/api/mcp/connections/${connectionId}/resources/read`, {
+      method: 'POST',
+      body: { uri }
+    })
+  }
+
+  async function mcpListPrompts(connectionId: string) {
+    return await $fetch<{ prompts: McpPrompt[] }>(`/api/mcp/connections/${connectionId}/prompts`)
+  }
+
+  async function mcpGetPrompt(connectionId: string, name: string, args: Record<string, any>) {
+    return await $fetch<any>(`/api/mcp/connections/${connectionId}/prompts/${name}`, {
+      method: 'POST',
+      body: args
+    })
+  }
+
+  async function mcpPing(connectionId: string) {
+    return await $fetch<void>(`/api/mcp/connections/${connectionId}/ping`, { method: 'POST' })
+  }
+
   return {
     // Requests
     getRequests,
@@ -238,6 +368,7 @@ export function useApi() {
     // Collections
     getCollections,
     createCollection,
+    updateCollection,
     deleteCollection,
     // History
     getHistory,
@@ -251,6 +382,26 @@ export function useApi() {
     // Variables
     addVariable,
     updateVariable,
-    deleteVariable
+    deleteVariable,
+    // Collection drag-drop
+    moveRequest,
+    reorderCollection,
+    // MCP Server Configs
+    getServerConfigs,
+    createServerConfig,
+    updateServerConfig,
+    deleteServerConfig,
+    // MCP Connection
+    mcpConnect,
+    mcpDisconnect,
+    mcpStatus,
+    // MCP Operations
+    mcpListTools,
+    mcpCallTool,
+    mcpListResources,
+    mcpReadResource,
+    mcpListPrompts,
+    mcpGetPrompt,
+    mcpPing
   }
 }

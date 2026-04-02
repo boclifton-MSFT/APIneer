@@ -1,18 +1,10 @@
 <script setup lang="ts">
 defineOptions({ name: 'UrlInput' })
 
-const props = withDefaults(defineProps<{
-  modelValue?: string
-}>(), {
-  modelValue: ''
-})
-
-const emit = defineEmits<{
-  'update:modelValue': [value: string]
-}>()
+const model = defineModel<string>({ default: '' })
 
 const variableSegments = computed(() => {
-  const url = props.modelValue
+  const url = model.value
   if (!url) return []
 
   const segments: Array<{ text: string; isVariable: boolean }> = []
@@ -37,7 +29,7 @@ const variableSegments = computed(() => {
 
 function onInput(event: Event) {
   const target = event.target as HTMLInputElement
-  emit('update:modelValue', target.value)
+  model.value = target.value
 }
 </script>
 
@@ -51,7 +43,7 @@ function onInput(event: Event) {
     </div>
     <input
       type="text"
-      :value="modelValue"
+      :value="model"
       placeholder="Enter request URL"
       class="url-input"
       @input="onInput"

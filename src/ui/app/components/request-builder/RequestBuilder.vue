@@ -5,8 +5,15 @@ import MethodSelector from './MethodSelector.vue'
 import UrlInput from './UrlInput.vue'
 import HeadersEditor from './HeadersEditor.vue'
 import BodyEditor from './BodyEditor.vue'
+import QueryParamsEditor from './QueryParamsEditor.vue'
+import AuthEditor from '~/components/auth/AuthEditor.vue'
 
 const REQUEST_TABS = ['Params', 'Headers', 'Body', 'Auth'] as const
+
+interface AuthConfig {
+  type: string
+  [key: string]: any
+}
 
 interface RequestData {
   method: string
@@ -14,6 +21,7 @@ interface RequestData {
   headers?: { key: string; value: string }[]
   body?: string
   bodyType?: string
+  authConfig?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -25,7 +33,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  send: [payload: { method: string; url: string; headers: { key: string; value: string }[]; body: string; bodyType: string }]
+  send: [payload: { method: string; url: string; headers: { key: string; value: string }[]; body: string; bodyType: string; authConfig: string }]
 }>()
 
 const method = ref('GET')
@@ -33,6 +41,7 @@ const url = ref('')
 const headers = ref([{ key: '', value: '' }])
 const bodyContent = ref('')
 const bodyType = ref('none')
+const authConfig = ref<AuthConfig>({ type: 'none' })
 const activeTab = ref<string>('Params')
 
 // Sync local state when the selected request changes
@@ -40,15 +49,27 @@ watch(() => props.request, (req) => {
   if (req) {
     method.value = req.method || 'GET'
     url.value = req.url || ''
-    headers.value = req.headers?.length ? req.headers.map(h => ({ ...h })) : [{ key: '', value: '' }]
+    const parsedHeaders = Array.isArray(req.headers) ? req.headers : (typeof req.headers === 'string' ? (() => { try { return JSON.parse(req.headers) } catch { return [] } })() : [])
+    headers.value = parsedHeaders?.length ? parsedHeaders.map((h: any) => ({ key: h.key || '', value: h.value || '' })) : [{ key: '', value: '' }]
     bodyContent.value = req.body || ''
     bodyType.value = req.bodyType || 'none'
+    if (req.authConfig) {
+      try {
+        const parsed = typeof req.authConfig === 'string' ? JSON.parse(req.authConfig) : req.authConfig
+        authConfig.value = parsed && parsed.type ? parsed : { type: 'none' }
+      } catch {
+        authConfig.value = { type: 'none' }
+      }
+    } else {
+      authConfig.value = { type: 'none' }
+    }
   } else {
     method.value = 'GET'
     url.value = ''
     headers.value = [{ key: '', value: '' }]
     bodyContent.value = ''
     bodyType.value = 'none'
+    authConfig.value = { type: 'none' }
   }
 }, { immediate: true })
 
@@ -59,7 +80,8 @@ function onSend() {
       url: url.value,
       headers: headers.value,
       body: bodyContent.value,
-      bodyType: bodyType.value
+      bodyType: bodyType.value,
+      authConfig: JSON.stringify(authConfig.value)
     })
   }
 }
@@ -103,19 +125,19 @@ function onKeydown(event: KeyboardEvent) {
 
     <div class="request-tab-content">
       <div v-if="activeTab === 'Params'" class="tab-panel">
-        <p class="text-muted text-sm">Query parameters editor coming soon.</p>
+        <QueryParamsEditor v-model:url="url" />
       </div>
 
-      <div v-if="activeTab === 'Headers'" class="tab-panel">
+      <div v-else-if="activeTab === 'Headers'" class="tab-panel">
         <HeadersEditor v-model="headers" />
       </div>
 
-      <div v-if="activeTab === 'Body'" class="tab-panel">
+      <div v-else-if="activeTab === 'Body'" class="tab-panel">
         <BodyEditor v-model="bodyContent" v-model:body-type="bodyType" />
       </div>
 
-      <div v-if="activeTab === 'Auth'" class="tab-panel">
-        <p class="text-muted text-sm">Authentication editor coming soon.</p>
+      <div v-else-if="activeTab === 'Auth'" class="tab-panel">
+        <AuthEditor v-model="authConfig" />
       </div>
     </div>
   </div>

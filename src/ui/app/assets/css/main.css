@@ -10,3 +10,11 @@
   --ui-radius: 0.375rem;
 }
 
+/* All interactive elements should show pointer cursor */
+button,
+select,
+[role="button"],
+summary {
+  cursor: pointer;
+}
+

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const items = computed<NavigationMenuItem[]>(() => [
+const items: NavigationMenuItem[] = [
   {
     label: 'Requests',
     icon: 'i-lucide-send',
@@ -21,8 +21,13 @@ const items = computed<NavigationMenuItem[]>(() => [
     label: 'Environments',
     icon: 'i-lucide-layers',
     to: '/environments'
+  },
+  {
+    label: 'MCP',
+    icon: 'i-lucide-plug',
+    to: '/mcp'
   }
-])
+]
 </script>
 
 <template>

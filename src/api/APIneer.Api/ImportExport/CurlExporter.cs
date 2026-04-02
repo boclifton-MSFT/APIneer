@@ -31,7 +31,7 @@ public static class CurlExporter
     {
         var sb = new StringBuilder("curl");
 
-        if (request.Method != "GET")
+        if (!string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase))
         {
             sb.Append($" -X {request.Method}");
         }

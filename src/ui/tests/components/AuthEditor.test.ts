@@ -141,3 +141,84 @@ describe('AuthEditor', () => {
     expect(values).toContain('query')
   })
 })
+
+describe('AuthEditor — edge cases', () => {
+  it('switching from bearer to basic clears token and shows username/password fields', async () => {
+    const wrapper = mount(AuthEditor, {
+      props: { modelValue: { type: 'bearer', token: 'my-token' } },
+    })
+    await wrapper.find('[data-testid="auth-type-selector"]').setValue('basic')
+
+    const emitted = wrapper.emitted('update:modelValue')![0][0] as any
+    expect(emitted.type).toBe('basic')
+    expect(emitted).toHaveProperty('username', '')
+    expect(emitted).toHaveProperty('password', '')
+    expect(emitted).not.toHaveProperty('token')
+
+    await wrapper.setProps({ modelValue: emitted })
+    expect(wrapper.find('[data-testid="basic-username"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="basic-password"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="bearer-token"]').exists()).toBe(false)
+  })
+
+  it('switching any auth type back to none clears all type-specific fields', async () => {
+    const wrapper = mount(AuthEditor, {
+      props: {
+        modelValue: {
+          type: 'oauth2',
+          tokenEndpoint: 'https://auth.example.com/token',
+          clientId: 'client',
+          clientSecret: 'secret',
+          scope: 'read',
+        },
+      },
+    })
+    await wrapper.find('[data-testid="auth-type-selector"]').setValue('none')
+
+    const emitted = wrapper.emitted('update:modelValue')![0][0] as any
+    expect(emitted).toEqual({ type: 'none' })
+
+    await wrapper.setProps({ modelValue: emitted })
+    expect(wrapper.find('[data-testid="oauth2-token-endpoint"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="apikey-key-name"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="bearer-token"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="basic-username"]').exists()).toBe(false)
+  })
+
+  it('OAuth2 fields all emit correct values when filled in', async () => {
+    const wrapper = mount(AuthEditor, {
+      props: {
+        modelValue: { type: 'oauth2', tokenEndpoint: '', clientId: '', clientSecret: '', scope: '' },
+      },
+    })
+
+    await wrapper.find('[data-testid="oauth2-token-endpoint"]').setValue('https://auth.example.com/token')
+    expect((wrapper.emitted('update:modelValue')!.at(-1)![0] as any).tokenEndpoint).toBe(
+      'https://auth.example.com/token',
+    )
+
+    await wrapper.find('[data-testid="oauth2-client-id"]').setValue('my-client-id')
+    expect((wrapper.emitted('update:modelValue')!.at(-1)![0] as any).clientId).toBe('my-client-id')
+
+    await wrapper.find('[data-testid="oauth2-client-secret"]').setValue('super-secret')
+    expect((wrapper.emitted('update:modelValue')!.at(-1)![0] as any).clientSecret).toBe('super-secret')
+
+    await wrapper.find('[data-testid="oauth2-scope"]').setValue('read write')
+    expect((wrapper.emitted('update:modelValue')!.at(-1)![0] as any).scope).toBe('read write')
+  })
+
+  it('API Key placement selector switches between header and query and preserves other fields', async () => {
+    const wrapper = mount(AuthEditor, {
+      props: { modelValue: { type: 'api_key', keyName: 'X-Key', keyValue: 'abc123', placement: 'header' } },
+    })
+
+    await wrapper.find('[data-testid="apikey-placement"]').setValue('query')
+    const emitted = wrapper.emitted('update:modelValue')!.at(-1)![0] as any
+    expect(emitted.placement).toBe('query')
+    expect(emitted.keyName).toBe('X-Key')
+    expect(emitted.keyValue).toBe('abc123')
+
+    await wrapper.setProps({ modelValue: emitted })
+    expect((wrapper.find('[data-testid="apikey-placement"]').element as HTMLSelectElement).value).toBe('query')
+  })
+})

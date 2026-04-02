@@ -1,31 +1,26 @@
 <script setup lang="ts">
-defineOptions({ name: 'EnvironmentSelector' })
+import type { Environment } from '~/composables/useApi'
 
-interface Environment {
-  id: string
-  name: string
-  isActive: boolean
-  workspaceId: string
-}
+defineOptions({ name: 'EnvironmentSelector' })
 
 const props = defineProps<{
   environments: Environment[]
-  modelValue: string
 }>()
 
+const model = defineModel<string>({ default: '' })
+
 const emit = defineEmits<{
-  'update:modelValue': [value: string]
   'activate': [id: string]
   'manage': []
 }>()
 
 const activeEnvironment = computed(() =>
-  props.environments.find((e) => e.id === props.modelValue)
+  props.environments.find((e) => e.id === model.value)
 )
 
 function onChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
-  emit('update:modelValue', value)
+  model.value = value
   emit('activate', value)
 }
 </script>
@@ -43,7 +38,7 @@ function onChange(event: Event) {
       </div>
       <select
         data-testid="environment-selector"
-        :value="modelValue"
+        :value="model"
         class="border rounded px-2 py-1 text-sm"
         @change="onChange"
       >

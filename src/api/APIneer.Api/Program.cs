@@ -1,6 +1,7 @@
 using APIneer.Api.Auth;
 using APIneer.Api.Data;
 using APIneer.Api.ImportExport;
+using APIneer.Api.Mcp;
 using APIneer.Api.Models;
 using APIneer.Api.Proxy;
 using APIneer.Api.Services;
@@ -8,9 +9,11 @@ using APIneer.Api.WebSocket;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Frozen;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +43,9 @@ builder.Services.AddHttpClient<IAuthHandler, AuthHandler>();
 
 // WebSocket proxy — singleton so REST endpoints can access the active connection
 builder.Services.AddSingleton<WebSocketProxy>();
+
+// MCP connection manager — singleton managing all MCP server connections
+builder.Services.AddSingleton<McpConnectionManager>();
 
 // Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -134,8 +140,6 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "healthy", timestamp =
     .WithTags("System");
 
 // ─── Validation constants ───────────────────────────────────────
-var validHttpMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    { "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" };
 const int maxBodySize = 10 * 1024 * 1024; // 10 MB
 
 // ─── Workspace endpoints (minimal — for FK seeding) ─────────────
@@ -163,13 +167,23 @@ app.MapPost("/api/collections", async (AppDbContext db, CreateCollectionDto dto)
     if (string.IsNullOrWhiteSpace(dto.Name))
         return Results.BadRequest(new { error = "Name is required." });
 
+    var workspaceId = dto.WorkspaceId;
+    if (workspaceId == Guid.Empty)
+    {
+        var defaultWorkspace = await db.Workspaces.FirstOrDefaultAsync();
+        if (defaultWorkspace is null)
+            return Results.BadRequest(new { error = "No workspace exists. Create a workspace first." });
+        workspaceId = defaultWorkspace.Id;
+    }
+
     var now = DateTime.UtcNow;
     var collection = new Collection
     {
         Id = Guid.NewGuid(),
         Name = dto.Name,
         Description = dto.Description,
-        WorkspaceId = dto.WorkspaceId,
+        AuthConfig = dto.AuthConfig,
+        WorkspaceId = workspaceId,
         CreatedAt = now,
         UpdatedAt = now
     };
@@ -180,17 +194,19 @@ app.MapPost("/api/collections", async (AppDbContext db, CreateCollectionDto dto)
 
 app.MapGet("/api/collections", async (AppDbContext db, int? page, int? pageSize) =>
 {
-    var query = db.Collections.AsNoTracking();
-    var totalCount = await query.CountAsync();
+    var baseQuery = db.Collections.AsNoTracking();
+    var totalCount = await baseQuery.CountAsync();
     var p = page ?? 1;
     var ps = Math.Clamp(pageSize ?? 50, 1, 100);
 
-    var collections = await query
+    var collections = await baseQuery
+        .Include(c => c.Folders)
+        .Include(c => c.Requests)
         .OrderByDescending(c => c.UpdatedAt)
         .Skip((p - 1) * ps)
         .Take(ps)
         .ToListAsync();
-    return Results.Ok(new { items = collections.Select(MapCollectionResponse), page = p, pageSize = ps, totalCount });
+    return Results.Ok(new { items = collections.Select(MapCollectionDetail), page = p, pageSize = ps, totalCount });
 }).WithTags("Collections");
 
 app.MapGet("/api/collections/{id:guid}", async (Guid id, AppDbContext db) =>
@@ -213,6 +229,7 @@ app.MapPut("/api/collections/{id:guid}", async (Guid id, AppDbContext db, Update
 
     if (dto.Name is not null) collection.Name = dto.Name;
     collection.Description = dto.Description;
+    if (dto.AuthConfig is not null) collection.AuthConfig = dto.AuthConfig;
     collection.UpdatedAt = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -310,11 +327,18 @@ app.MapPatch("/api/collections/{id:guid}/reorder", async (Guid id, AppDbContext 
     var collection = await db.Collections.FindAsync(id);
     if (collection is null) return Results.NotFound();
 
-    for (int i = 0; i < dto.ItemIds.Length; i++)
+    var requestIds = dto.ItemIds.ToList();
+    var requests = await db.ApiRequests
+        .Where(r => requestIds.Contains(r.Id))
+        .ToListAsync();
+
+    var orderLookup = requestIds.Select((id, index) => (id, index))
+        .ToDictionary(x => x.id, x => x.index);
+
+    foreach (var request in requests)
     {
-        var request = await db.ApiRequests.FindAsync(dto.ItemIds[i]);
-        if (request is not null)
-            request.SortOrder = i;
+        if (orderLookup.TryGetValue(request.Id, out var order))
+            request.SortOrder = order;
     }
 
     await db.SaveChangesAsync();
@@ -414,7 +438,7 @@ app.MapPost("/api/requests", async (AppDbContext db, CreateRequestDto dto) =>
     if (string.IsNullOrWhiteSpace(dto.Name))
         return Results.BadRequest(new { error = "Name is required." });
 
-    if (string.IsNullOrWhiteSpace(dto.Method) || !validHttpMethods.Contains(dto.Method))
+    if (string.IsNullOrWhiteSpace(dto.Method) || !Program.ValidHttpMethods.Contains(dto.Method))
         return Results.BadRequest(new { error = "Invalid HTTP method." });
 
     // Auto-assign collectionId when not provided — find or create default collection
@@ -478,6 +502,7 @@ app.MapPost("/api/requests", async (AppDbContext db, CreateRequestDto dto) =>
         Headers = dto.Headers,
         Body = dto.Body,
         BodyType = dto.BodyType,
+        AuthConfig = dto.AuthConfig,
         FolderId = dto.FolderId,
         SortOrder = sortOrder,
         CreatedAt = now,
@@ -519,7 +544,7 @@ app.MapPut("/api/requests/{id:guid}", async (Guid id, AppDbContext db, UpdateReq
     if (dto.Name is not null) request.Name = dto.Name;
     if (dto.Method is not null)
     {
-        if (!validHttpMethods.Contains(dto.Method))
+        if (!Program.ValidHttpMethods.Contains(dto.Method))
             return Results.BadRequest(new { error = "Invalid HTTP method." });
         request.Method = dto.Method.ToUpperInvariant();
     }
@@ -527,6 +552,7 @@ app.MapPut("/api/requests/{id:guid}", async (Guid id, AppDbContext db, UpdateReq
     request.Headers = dto.Headers;
     request.Body = dto.Body;
     request.BodyType = dto.BodyType;
+    if (dto.AuthConfig is not null) request.AuthConfig = dto.AuthConfig;
     request.UpdatedAt = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -545,7 +571,7 @@ app.MapDelete("/api/requests/{id:guid}", async (Guid id, AppDbContext db) =>
 
 // ─── Request execution & history ────────────────────────────────
 
-app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db, IProxyEngine proxy) =>
+app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db, IProxyEngine proxy, IAuthHandler authHandler) =>
 {
     var request = await db.ApiRequests.FindAsync(id);
     if (request is null) return Results.NotFound();
@@ -569,6 +595,57 @@ app.MapPost("/api/requests/{id:guid}/send", async (Guid id, AppDbContext db, IPr
                 proxyRequest.Headers = headers;
         }
         catch { /* Ignore malformed headers — send without them */ }
+    }
+
+    // Apply auth config to the outgoing request
+    AuthConfig? requestAuth = null;
+    if (!string.IsNullOrEmpty(request.AuthConfig))
+    {
+        try
+        {
+            requestAuth = JsonSerializer.Deserialize<AuthConfig>(request.AuthConfig,
+                Program.CaseInsensitiveJsonOptions);
+        }
+        catch
+        {
+            return Results.BadRequest(new { error = "Invalid auth configuration on request." });
+        }
+    }
+
+    // Resolve auth: request-level overrides collection-level
+    AuthConfig? collectionAuth = null;
+    var collection = await db.Collections.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.CollectionId);
+    if (collection is not null && !string.IsNullOrEmpty(collection.AuthConfig))
+    {
+        try
+        {
+            collectionAuth = JsonSerializer.Deserialize<AuthConfig>(collection.AuthConfig,
+                Program.CaseInsensitiveJsonOptions);
+        }
+        catch { /* Ignore malformed collection auth */ }
+    }
+
+    var resolvedAuth = authHandler.ResolveAuth(requestAuth, collectionAuth);
+
+    if (resolvedAuth is not null)
+    {
+        try
+        {
+            await authHandler.ApplyAuthAsync(proxyRequest, resolvedAuth);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("OAuth2"))
+        {
+            return Results.Json(new { error = ex.Message }, statusCode: 502);
+        }
+        catch (HttpRequestException ex)
+        {
+            // OAuth2 token fetch failed at the network level
+            return Results.Json(new { error = $"Auth token request failed: {ex.Message}" }, statusCode: 502);
+        }
     }
 
     // Execute via the real proxy engine
@@ -705,19 +782,15 @@ app.MapGet("/api/history", async (
 
 app.MapDelete("/api/history", async (AppDbContext db) =>
 {
-    db.RequestHistory.RemoveRange(db.RequestHistory);
-    await db.SaveChangesAsync();
+    await db.RequestHistory.ExecuteDeleteAsync();
     return Results.NoContent();
 }).WithTags("History");
 
 // ─── Code Generation endpoint ───────────────────────────────────
 
-var validCodeLanguages = new HashSet<string>
-    { "javascript-fetch", "javascript-axios", "python-requests", "csharp-httpclient", "curl" };
-
 app.MapGet("/api/requests/{id:guid}/code", async (Guid id, AppDbContext db, string? language) =>
 {
-    if (string.IsNullOrWhiteSpace(language) || !validCodeLanguages.Contains(language))
+    if (string.IsNullOrWhiteSpace(language) || !Program.ValidCodeLanguages.Contains(language))
         return Results.BadRequest(new { error = "Invalid or missing language parameter." });
 
     var request = await db.ApiRequests.FindAsync(id);
@@ -980,13 +1053,9 @@ app.MapPut("/api/environments/{id:guid}/activate", async (Guid id, AppDbContext 
     if (environment is null) return Results.NotFound();
 
     // Deactivate all other environments in the same workspace
-    var siblings = await db.Environments
+    await db.Environments
         .Where(e => e.WorkspaceId == environment.WorkspaceId && e.IsActive)
-        .ToListAsync();
-    foreach (var sibling in siblings)
-    {
-        sibling.IsActive = false;
-    }
+        .ExecuteUpdateAsync(s => s.SetProperty(e => e.IsActive, false));
 
     environment.IsActive = true;
     await db.SaveChangesAsync();
@@ -1203,7 +1272,7 @@ app.MapPost("/api/import/json", async (AppDbContext db, HttpRequest httpReq) =>
 app.MapGet("/api/collections/{id:guid}/export", async (Guid id, string? format, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(format) ||
-        !new[] { "json", "curl", "postman" }.Contains(format.ToLowerInvariant()))
+        !Program.ValidExportFormats.Contains(format))
     {
         return Results.BadRequest(new { error = "Invalid or missing format. Supported: json, curl, postman." });
     }
@@ -1239,6 +1308,7 @@ static object MapToResponse(ApiRequest r) => new
     r.Headers,
     r.Body,
     r.BodyType,
+    r.AuthConfig,
     r.SortOrder,
     r.CreatedAt,
     r.UpdatedAt
@@ -1250,6 +1320,7 @@ static object MapCollectionResponse(Collection c) => new
     c.WorkspaceId,
     c.Name,
     c.Description,
+    c.AuthConfig,
     c.CreatedAt,
     c.UpdatedAt
 };
@@ -1277,6 +1348,7 @@ static object MapCollectionDetail(Collection c)
         c.WorkspaceId,
         c.Name,
         c.Description,
+        c.AuthConfig,
         c.CreatedAt,
         c.UpdatedAt,
         folders = rootFolders,
@@ -1326,15 +1398,25 @@ static object MapRequestSummary(ApiRequest r) => new
 
 static async Task CollectDescendantFolderIds(AppDbContext db, Guid parentId, List<Guid> result)
 {
-    var childIds = await db.CollectionFolders
-        .Where(f => f.ParentFolderId == parentId)
-        .Select(f => f.Id)
-        .ToListAsync();
+    var queue = new Queue<Guid>();
+    queue.Enqueue(parentId);
 
-    foreach (var childId in childIds)
+    while (queue.Count > 0)
     {
-        result.Add(childId);
-        await CollectDescendantFolderIds(db, childId, result);
+        var currentIds = new List<Guid>();
+        while (queue.Count > 0)
+            currentIds.Add(queue.Dequeue());
+
+        var childIds = await db.CollectionFolders
+            .Where(f => f.ParentFolderId != null && currentIds.Contains(f.ParentFolderId.Value))
+            .Select(f => f.Id)
+            .ToListAsync();
+
+        foreach (var childId in childIds)
+        {
+            result.Add(childId);
+            queue.Enqueue(childId);
+        }
     }
 }
 
@@ -1347,7 +1429,7 @@ static object MapToEnvironmentResponse(APIneer.Api.Models.Environment e, bool ma
     createdAt = e.CreatedAt,
     updatedAt = e.UpdatedAt,
     variables = e.Variables?.Select(v => MapToVariableResponse(v, maskSecrets)).ToArray()
-        ?? Array.Empty<object>()
+        ?? []
 };
 
 static object MapToVariableResponse(EnvironmentVariable v, bool maskSecrets = false) => new
@@ -1379,9 +1461,8 @@ static string? ResolveVariables(string? input, Dictionary<string, string> variab
                       .Replace(escapedClose, placeholderClose);
 
     // Resolve {{key}} patterns
-    result = System.Text.RegularExpressions.Regex.Replace(
+    result = Program.VariablePattern().Replace(
         result,
-        @"\{\{(\w+)\}\}",
         match =>
         {
             var key = match.Groups[1].Value;
@@ -1483,6 +1564,335 @@ app.MapGet("/api/ws/status", (WebSocketProxy wsProxy) =>
         error = wsProxy.ErrorMessage
     });
 }).WithTags("WebSocket");
+
+// ─── MCP (Model Context Protocol) endpoints ─────────────────────
+
+app.MapPost("/api/mcp/servers", async (AppDbContext db, CreateMcpServerDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.Name))
+        return Results.BadRequest(new { error = "Name is required." });
+
+    if (string.IsNullOrWhiteSpace(dto.TransportType) || !Program.ValidTransportTypes.Contains(dto.TransportType))
+        return Results.BadRequest(new { error = "TransportType must be 'stdio' or 'streamable-http'." });
+
+    if (dto.TransportType.Equals("stdio", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(dto.Command))
+        return Results.BadRequest(new { error = "Command is required for stdio transport." });
+
+    if (dto.TransportType.Equals("streamable-http", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(dto.Url))
+        return Results.BadRequest(new { error = "Url is required for streamable-http transport." });
+
+    var now = DateTime.UtcNow;
+    var config = new McpServerConfig
+    {
+        Id = Guid.NewGuid(),
+        Name = dto.Name,
+        TransportType = dto.TransportType.ToLowerInvariant(),
+        Command = dto.Command,
+        Args = dto.Args,
+        EnvironmentVariables = dto.EnvironmentVariables,
+        Url = dto.Url,
+        Headers = dto.Headers is not null ? JsonSerializer.Serialize(dto.Headers) : null,
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+    db.McpServerConfigs.Add(config);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/mcp/servers/{config.Id}", MapMcpServerResponse(config));
+}).WithTags("MCP");
+
+// List saved server configs
+app.MapGet("/api/mcp/servers", async (AppDbContext db) =>
+{
+    var configs = await db.McpServerConfigs.AsNoTracking()
+        .OrderByDescending(c => c.UpdatedAt)
+        .ToListAsync();
+    return Results.Ok(configs.Select(MapMcpServerResponse));
+}).WithTags("MCP");
+
+// Update a server config
+app.MapPut("/api/mcp/servers/{id:guid}", async (Guid id, AppDbContext db, UpdateMcpServerDto dto) =>
+{
+    var config = await db.McpServerConfigs.FindAsync(id);
+    if (config is null) return Results.NotFound();
+
+    if (dto.Name is not null) config.Name = dto.Name;
+    if (dto.TransportType is not null)
+    {
+        if (!Program.ValidTransportTypes.Contains(dto.TransportType))
+            return Results.BadRequest(new { error = "TransportType must be 'stdio' or 'streamable-http'." });
+        config.TransportType = dto.TransportType.ToLowerInvariant();
+    }
+    if (dto.Command is not null) config.Command = dto.Command;
+    if (dto.Args is not null) config.Args = dto.Args;
+    if (dto.EnvironmentVariables is not null) config.EnvironmentVariables = dto.EnvironmentVariables;
+    if (dto.Url is not null) config.Url = dto.Url;
+    if (dto.Headers is not null) config.Headers = JsonSerializer.Serialize(dto.Headers);
+    config.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(MapMcpServerResponse(config));
+}).WithTags("MCP");
+
+// Delete a server config
+app.MapDelete("/api/mcp/servers/{id:guid}", async (Guid id, AppDbContext db) =>
+{
+    var config = await db.McpServerConfigs.FindAsync(id);
+    if (config is null) return Results.NotFound();
+    db.McpServerConfigs.Remove(config);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+}).WithTags("MCP");
+
+// Connect to a server
+app.MapPost("/api/mcp/connect", async (McpConnectionManager mgr, AppDbContext db, McpConnectDto dto) =>
+{
+    string transportType;
+    string? command = null, url = null;
+    string[]? args = null;
+    Dictionary<string, string>? envVars = null;
+    Dictionary<string, string>? headers = null;
+    Guid? serverConfigId = null;
+
+    if (dto.ServerId.HasValue)
+    {
+        var config = await db.McpServerConfigs.FindAsync(dto.ServerId.Value);
+        if (config is null) return Results.NotFound(new { error = "Server config not found." });
+
+        transportType = config.TransportType;
+        command = config.Command;
+        url = config.Url;
+        serverConfigId = config.Id;
+
+        if (config.Args is not null)
+        {
+            try { args = JsonSerializer.Deserialize<string[]>(config.Args); }
+            catch { /* ignore */ }
+        }
+        if (config.EnvironmentVariables is not null)
+        {
+            try { envVars = JsonSerializer.Deserialize<Dictionary<string, string>>(config.EnvironmentVariables); }
+            catch { /* ignore */ }
+        }
+        if (config.Headers is not null)
+        {
+            try { headers = JsonSerializer.Deserialize<Dictionary<string, string>>(config.Headers); }
+            catch { /* ignore */ }
+        }
+    }
+    else if (dto.TransportType is not null)
+    {
+        transportType = dto.TransportType;
+        command = dto.Command;
+        url = dto.Url;
+        headers = dto.Headers;
+
+        if (dto.Args is not null)
+        {
+            try { args = JsonSerializer.Deserialize<string[]>(dto.Args); }
+            catch { /* ignore */ }
+        }
+        if (dto.EnvironmentVariables is not null)
+        {
+            try { envVars = JsonSerializer.Deserialize<Dictionary<string, string>>(dto.EnvironmentVariables); }
+            catch { /* ignore */ }
+        }
+    }
+    else
+    {
+        return Results.BadRequest(new { error = "Provide serverId or inline config (transportType, command/url)." });
+    }
+
+    try
+    {
+        var transport = mgr.CreateTransport(transportType, command, args, envVars, url);
+        var connection = mgr.CreateConnection();
+        connection.ServerConfigId = serverConfigId;
+        await connection.ConnectAsync(transport);
+
+        return Results.Ok(new
+        {
+            connectionId = connection.Id,
+            state = connection.State.ToString().ToLowerInvariant(),
+            serverCapabilities = connection.ServerCapabilities,
+            serverInfo = connection.ServerInfo
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = $"Failed to connect: {ex.Message}" }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// Disconnect
+app.MapPost("/api/mcp/disconnect", async (McpConnectionManager mgr, McpConnectionIdDto dto) =>
+{
+    if (!dto.ConnectionId.HasValue)
+        return Results.BadRequest(new { error = "connectionId is required." });
+
+    var removed = await mgr.RemoveConnectionAsync(dto.ConnectionId.Value);
+    if (!removed) return Results.NotFound(new { error = "Connection not found." });
+    return Results.Ok(new { status = "disconnected" });
+}).WithTags("MCP");
+
+// Get connection status
+app.MapGet("/api/mcp/status", (McpConnectionManager mgr) =>
+{
+    var connections = mgr.GetAllConnections().Select(c => new
+    {
+        connectionId = c.Id,
+        state = c.State.ToString().ToLowerInvariant(),
+        serverConfigId = c.ServerConfigId,
+        serverCapabilities = c.ServerCapabilities,
+        serverInfo = c.ServerInfo
+    });
+    return Results.Ok(new { connections });
+}).WithTags("MCP");
+
+// List tools
+app.MapPost("/api/mcp/tools/list", async (McpConnectionManager mgr, McpConnectionIdDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    try
+    {
+        var response = await conn.ListToolsAsync();
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// Call a tool
+app.MapPost("/api/mcp/tools/call", async (McpConnectionManager mgr, McpToolCallDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    if (string.IsNullOrWhiteSpace(dto.Name))
+        return Results.BadRequest(new { error = "Tool name is required." });
+
+    try
+    {
+        var response = await conn.CallToolAsync(dto.Name, dto.Arguments);
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// List resources
+app.MapPost("/api/mcp/resources/list", async (McpConnectionManager mgr, McpConnectionIdDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    try
+    {
+        var response = await conn.ListResourcesAsync();
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// Read a resource
+app.MapPost("/api/mcp/resources/read", async (McpConnectionManager mgr, McpResourceReadDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    if (string.IsNullOrWhiteSpace(dto.Uri))
+        return Results.BadRequest(new { error = "Resource URI is required." });
+
+    try
+    {
+        var response = await conn.ReadResourceAsync(dto.Uri);
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// List prompts
+app.MapPost("/api/mcp/prompts/list", async (McpConnectionManager mgr, McpConnectionIdDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    try
+    {
+        var response = await conn.ListPromptsAsync();
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// Get a prompt
+app.MapPost("/api/mcp/prompts/get", async (McpConnectionManager mgr, McpPromptGetDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    if (string.IsNullOrWhiteSpace(dto.Name))
+        return Results.BadRequest(new { error = "Prompt name is required." });
+
+    try
+    {
+        var response = await conn.GetPromptAsync(dto.Name, dto.Arguments);
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(response.Result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
+
+// Ping
+app.MapPost("/api/mcp/ping", async (McpConnectionManager mgr, McpConnectionIdDto dto) =>
+{
+    var conn = GetMcpConnection(mgr, dto.ConnectionId);
+    if (conn is null) return Results.NotFound(new { error = "Connection not found." });
+
+    try
+    {
+        var response = await conn.PingAsync();
+        if (response.Error is not null)
+            return Results.Json(new { error = new { code = response.Error.Code, message = response.Error.Message } }, statusCode: 502);
+        return Results.Ok(new { status = "pong" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message }, statusCode: 502);
+    }
+}).WithTags("MCP");
 
 app.Run();
 
@@ -1677,11 +2087,33 @@ static AssertionResult EvaluateAssertion(Assertion assertion, int responseStatus
     };
 }
 
+// ─── MCP helpers ────────────────────────────────────────────────
+
+static McpConnection? GetMcpConnection(McpConnectionManager mgr, Guid? connectionId)
+{
+    if (!connectionId.HasValue) return null;
+    return mgr.GetConnection(connectionId.Value);
+}
+
+static object MapMcpServerResponse(McpServerConfig c) => new
+{
+    c.Id,
+    c.Name,
+    c.TransportType,
+    c.Command,
+    c.Args,
+    c.EnvironmentVariables,
+    c.Url,
+    c.Headers,
+    c.CreatedAt,
+    c.UpdatedAt
+};
+
 // ─── DTOs ───────────────────────────────────────────────────────
 
 record CreateWorkspaceDto(string Name);
-record CreateCollectionDto(string? Name, string? Description, Guid WorkspaceId);
-record UpdateCollectionDto(string? Name, string? Description);
+record CreateCollectionDto(string? Name, string? Description, Guid WorkspaceId, string? AuthConfig);
+record UpdateCollectionDto(string? Name, string? Description, string? AuthConfig);
 record CreateFolderDto(string? Name, Guid? ParentFolderId);
 record MoveRequestDto(Guid? FolderId);
 record ReorderDto(Guid[] ItemIds);
@@ -1695,7 +2127,8 @@ record CreateRequestDto(
     string? Body,
     string? BodyType,
     Guid? FolderId,
-    int? SortOrder);
+    int? SortOrder,
+    string? AuthConfig);
 
 record UpdateRequestDto(
     string? Name,
@@ -1704,7 +2137,8 @@ record UpdateRequestDto(
     string? Headers,
     string? Body,
     string? BodyType,
-    int? SortOrder);
+    int? SortOrder,
+    string? AuthConfig);
 
 record CreateEnvironmentDto(string Name, Guid WorkspaceId);
 record UpdateEnvironmentDto(string? Name);
@@ -1718,7 +2152,42 @@ record CreateAssertionDto(string Type, string Expected);
 
 record AssertionResult(string Type, string Expected, bool Passed, string? Actual);
 
+// MCP DTOs
+record CreateMcpServerDto(string? Name, string? TransportType, string? Command, string? Args,
+    string? EnvironmentVariables, string? Url, Dictionary<string, string>? Headers);
+record UpdateMcpServerDto(string? Name, string? TransportType, string? Command, string? Args,
+    string? EnvironmentVariables, string? Url, Dictionary<string, string>? Headers);
+record McpConnectDto(Guid? ServerId, string? TransportType, string? Command, string? Args,
+    string? EnvironmentVariables, string? Url, Dictionary<string, string>? Headers);
+record McpConnectionIdDto(Guid? ConnectionId);
+record McpToolCallDto(Guid? ConnectionId, string? Name, object? Arguments);
+record McpResourceReadDto(Guid? ConnectionId, string? Uri);
+record McpPromptGetDto(Guid? ConnectionId, string? Name, object? Arguments);
+
 /// <summary>
 /// Enables WebApplicationFactory access from the test project.
 /// </summary>
-public partial class Program;
+public partial class Program
+{
+    internal static readonly JsonSerializerOptions CaseInsensitiveJsonOptions =
+        new() { PropertyNameCaseInsensitive = true };
+
+    internal static readonly FrozenSet<string> ValidHttpMethods =
+        new[] { "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" }
+        .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    internal static readonly FrozenSet<string> ValidCodeLanguages =
+        new[] { "javascript-fetch", "javascript-axios", "python-requests", "csharp-httpclient", "curl" }
+        .ToFrozenSet();
+
+    internal static readonly FrozenSet<string> ValidExportFormats =
+        new[] { "json", "curl", "postman" }
+        .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    internal static readonly FrozenSet<string> ValidTransportTypes =
+        new[] { "stdio", "streamable-http" }
+        .ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    [GeneratedRegex(@"\{\{(\w+)\}\}")]
+    internal static partial Regex VariablePattern();
+}

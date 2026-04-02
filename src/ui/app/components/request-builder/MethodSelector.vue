@@ -1,34 +1,17 @@
 <script setup lang="ts">
+import { METHOD_CSS_COLORS, methodCssColor, type HttpMethod } from '~/composables/useHttpColors'
+
 defineOptions({ name: 'MethodSelector' })
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
-type HttpMethod = (typeof HTTP_METHODS)[number]
 
-const METHOD_COLORS: Record<HttpMethod, string> = {
-  GET: 'green',
-  POST: 'blue',
-  PUT: 'orange',
-  PATCH: 'yellow',
-  DELETE: 'red',
-  HEAD: 'purple',
-  OPTIONS: 'gray'
-}
+const model = defineModel<string>({ default: 'GET' })
 
-const props = withDefaults(defineProps<{
-  modelValue?: string
-}>(), {
-  modelValue: 'GET'
-})
-
-const emit = defineEmits<{
-  'update:modelValue': [value: string]
-}>()
-
-const currentColor = computed(() => METHOD_COLORS[props.modelValue as HttpMethod] ?? 'gray')
+const currentColor = computed(() => methodCssColor(model.value))
 
 function onChange(event: Event) {
   const target = event.target as HTMLSelectElement
-  emit('update:modelValue', target.value)
+  model.value = target.value
 }
 </script>
 
@@ -37,7 +20,7 @@ function onChange(event: Event) {
     data-testid="method-selector"
     :class="['method-selector', `method-${currentColor}`]"
   >
-    <select :value="modelValue" @change="onChange">
+    <select :value="model" @change="onChange">
       <option v-for="method in HTTP_METHODS" :key="method" :value="method">
         {{ method }}
       </option>

@@ -286,9 +286,9 @@ onMounted(() => {
             <UFormField label="Value" class="flex-1">
               <UInput v-model="newVarValue" placeholder="your-value-here" :type="newVarIsSecret ? 'password' : 'text'" />
             </UFormField>
-            <UFormField label=" ">
+            <div class="flex items-center">
               <UCheckbox v-model="newVarIsSecret" label="Secret" />
-            </UFormField>
+            </div>
             <UButton
               label="Add"
               icon="i-lucide-plus"

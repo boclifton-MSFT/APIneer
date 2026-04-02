@@ -10,14 +10,8 @@ namespace APIneer.Api.Auth;
 /// resolves auth inheritance between collection and request levels.
 /// Supports: api_key (header/query), bearer, basic, oauth2 (client credentials).
 /// </summary>
-public class AuthHandler : IAuthHandler
+public class AuthHandler(HttpClient httpClient) : IAuthHandler
 {
-    private readonly HttpClient _httpClient;
-
-    public AuthHandler(HttpClient httpClient)
-    {
-        _httpClient = httpClient;
-    }
 
     /// <inheritdoc />
     public async Task ApplyAuthAsync(ProxyRequest request, AuthConfig authConfig, CancellationToken cancellationToken = default)
@@ -157,7 +151,7 @@ public class AuthHandler : IAuthHandler
         }
 
         using var content = new FormUrlEncodedContent(formParams);
-        using var response = await _httpClient.PostAsync(auth.TokenEndpoint, content, cancellationToken);
+        using var response = await httpClient.PostAsync(auth.TokenEndpoint, content, cancellationToken);
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 

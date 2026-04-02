@@ -175,6 +175,7 @@ public static class TestData
         string? Headers,
         string? Body,
         string? BodyType,
+        string? AuthConfig,
         int SortOrder,
         DateTime CreatedAt,
         DateTime UpdatedAt);

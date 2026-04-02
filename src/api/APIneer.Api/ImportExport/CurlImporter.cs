@@ -7,7 +7,7 @@ namespace APIneer.Api.ImportExport;
 /// <summary>
 /// Parses cURL commands and extracts method, URL, headers, body, and auth info.
 /// </summary>
-public static class CurlImporter
+public static partial class CurlImporter
 {
     public static CurlParseResult Parse(string curlCommand)
     {
@@ -15,7 +15,7 @@ public static class CurlImporter
             throw new ImportValidationException("cURL command is empty.");
 
         // Normalize multiline (backslash continuation)
-        var normalized = Regex.Replace(curlCommand.Trim(), @"\\\s*\n\s*", " ");
+        var normalized = BackslashContinuationRegex().Replace(curlCommand.Trim(), " ");
         normalized = normalized.Trim();
 
         if (!normalized.StartsWith("curl", StringComparison.OrdinalIgnoreCase))
@@ -157,6 +157,12 @@ public static class CurlImporter
 
         return tokens;
     }
+}
+
+public partial class CurlImporter
+{
+    [GeneratedRegex(@"\\\s*\n\s*")]
+    private static partial Regex BackslashContinuationRegex();
 }
 
 public record CurlParseResult(string Name, string Method, string Url, string? Headers, string? Body);
