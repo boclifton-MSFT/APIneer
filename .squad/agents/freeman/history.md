@@ -181,3 +181,9 @@ Full details: `.squad/decisions/decisions.md`, orchestration logs for both agent
 - **Nuxt UI placeholder text:** `UDashboardPanel` renders its own "not connected" placeholder that doesn't exactly match the template string. Assert loosely (`toContain('Connect to')`) rather than matching the full template interpolation.
 - **Connect/Disconnect buttons:** Plain `<button class="connect-button">` / `<button class="disconnect-button">` — use `.find('.connect-button')` / `.find('.disconnect-button')`. Both are in the `v-else` panel, so a server must be selected first.
 - **Test groups:** Server List (7-9), Connection Form (1-6), Capability Tabs (10-12), Integration (13-15).
+
+### 2025-07-17 — ApiTestFixture ExecuteDelete Optimization
+- **Replaced** `RemoveRange` + `SaveChanges` with `ExecuteDelete()` in `tests/APIneer.Api.Tests/ApiTestFixture.cs` — eliminates entity materialization and change tracking overhead during test cleanup.
+- **SQLite self-referencing FK gotcha:** `CollectionFolders` has a self-referencing `ParentFolderId` FK with `Restrict` delete behavior. SQLite enforces FK constraints per-row during `DELETE FROM`, so bulk-deleting with `ExecuteDelete()` fails if a parent row is deleted before its child. Fix: wrap cleanup in `PRAGMA foreign_keys = OFF/ON`.
+- **Deletion order (FK-safe):** Assertions → RequestHistory → ApiRequests → CollectionFolders → Collections → EnvironmentVariables → Environments → McpServerConfigs → Workspaces. Child tables before parents.
+- **Result:** 384 passed, 8 skipped, 7 failed (pre-existing failures in `AuthProxyIntegrationTests` — unrelated new test file with API build errors).

@@ -35,8 +35,9 @@
 
 ## Model
 
-- **Preferred:** auto
-- **Rationale:** Coordinator selects the best model based on task type — cost first unless writing code
+- **Planning / architecture proposals:** `claude-opus-4.6-1m` (premium — planning is high-stakes)
+- **Code review:** `claude-sonnet-4.6`
+- **Triage / status / lightweight ops:** `claude-haiku-4.5`
 - **Fallback:** Standard chain — the coordinator handles fallback automatically
 
 ## Collaboration

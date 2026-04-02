@@ -2,6 +2,9 @@
   "version": 1,
   "agentModelOverrides": {
     "arthur": "claude-sonnet-4.6",
-    "dutch": "claude-sonnet-4.6"
+    "dutch": "claude-sonnet-4.6",
+    "marcus": "claude-sonnet-4.6",
+    "freeman": "claude-sonnet-4.6",
+    "kratos": "claude-sonnet-4.6"
   }
 }

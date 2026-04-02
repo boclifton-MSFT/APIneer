@@ -9,6 +9,16 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2025-07-18: Phase A Frontend Optimizations (224/224 tests GREEN)
+- **Type deduplication:** `Collection`, `CollectionFolder`, `CollectionRequest` interfaces now exported from `~/composables/useApi.ts` and imported by `CollectionSidebar.vue`, `CollectionTree.vue`, `CollectionTreeFolder.vue`, `CollectionPicker.vue`. No more copy-pasted interfaces.
+- **`defineModel` adoption:** `UrlInput.vue`, `MethodSelector.vue`, `HeadersEditor.vue`, `BodyEditor.vue`, `EnvironmentSelector.vue` now use Vue 3.4+ `defineModel()` instead of manual prop+emit pattern. BodyEditor has two models: `defineModel<string>()` for body content and `defineModel<string>('bodyType')` for body type.
+- **HTTP color composable:** Created `~/composables/useHttpColors.ts` with `METHOD_COLORS` (for UBadge semantic colors), `METHOD_CSS_COLORS` (for CSS class-based coloring), `methodColor()`, `methodCssColor()`, `statusSeverity()`. Used in `history.vue`, `StatusBadge.vue`, `MethodSelector.vue`. Uses `satisfies` for type safety.
+- **`any` type cleanup (mcp.vue):** `tools`, `resources`, `prompts` refs now properly typed with `McpTool[]`, `McpResource[]`, `McpPrompt[]`. `selectedTool`/`selectedPrompt` typed with `McpTool | null` / `McpPrompt | null`. Result refs use `Record<string, any> | null` (dynamic API responses).
+- **Nuxt auto-import cleanup:** Removed explicit `import { ref } from 'vue'` from `useCollectionDragDrop.ts`, `import { ref, nextTick } from 'vue'` from `InlineRename.vue`, and unused `import type { UseFetchOptions } from 'nuxt/app'` from `useApi.ts`.
+- **Minor wins:** `dashboard.vue` nav items changed from `computed()` to plain `const` (no reactive deps). Removed dead `deleteRequest()` from `index.vue`. Changed four `v-if` blocks to `v-else-if` chain in `RequestBuilder.vue`. Removed redundant `safeCollections` computed from `CollectionSidebar.vue` (props already defaults to `[]`).
+- **Pattern:** `defineModel<T>('propName', { default: defaultVal })` for named models (like bodyType). Default unnamed model uses `defineModel<T>({ default: val })`.
+- **Key file:** `composables/useHttpColors.ts` is the single source of truth for HTTP method and status code colors.
+
 ### 2025-07-18: Delete Request from Sidebar (209/209 tests GREEN)
 - **Feature:** Added hover-reveal trash icon on request items in sidebar. Clicking shows a confirmation modal, then deletes via API.
 - **CollectionSidebar.vue:** Added `delete-request` emit with `{ requestId, requestName }`. Added `<button class="delete-icon">` with `<UIcon name="i-lucide-trash-2">` inside each `.request-item`. Uses `@click.stop` to prevent triggering selection or drag. CSS: `.delete-icon` is `opacity: 0` by default, `.request-item:hover .delete-icon` sets `opacity: 1`, icon turns red on `:hover`.

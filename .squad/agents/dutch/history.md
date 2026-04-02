@@ -26,4 +26,22 @@
 - **Nuxt auto-imports:** Several files explicitly import `ref`, `nextTick`, `computed` from 'vue' and components from relative paths unnecessarily
 - **`useApi.ts`:** Unused import `UseFetchOptions`, `sendRequest()` contains inline status text map and header parsing logic that could be extracted
 - **`mcp.vue`:** Uses many `any` types for tools/resources/prompts despite types existing in `useApi.ts`
+- **`mcp.vue`:** Uses many `any` types for tools/resources/prompts despite types existing in `useApi.ts`
 - **Test stack:** Vitest + @nuxt/test-utils + MSW, test files mirror component names in `tests/components/`
+
+### 2026-04-02 — Frontend Optimization Phase A Complete
+
+**Status:** ✅ Completed
+
+Kratos implemented 6/8 Phase A optimization items from the architecture review:
+
+1. **Type deduplication (4 components):** Imported `Collection`, `Folder`, `Request` types from `useApi.ts` instead of duplicating across CollectionSidebar, CollectionTreeFolder, RequestBuilder, HistoryPanel
+2. **`defineModel` adoption (5 components):** Replaced manual `defineProps() + defineEmits()` pairs with declarative `defineModel<T>()` in RequestBuilder, ResponsePanel, AuthEditor, EnvironmentEditor, FormDataEditor
+3. **HTTP color consolidation:** Created `composables/useHttpColors.ts` — single source of truth for method colors, status severity, and CSS color names. Eliminated duplication across 5 components.
+4. **Type safety in mcp.vue:** Replaced `any` types with proper interfaces from `useApi.ts` (McpTool[], McpResource[], McpPrompt[], environment variables)
+5. **Nuxt auto-import cleanup (3 files):** Removed redundant imports of `ref`, `nextTick`, `computed` from 'vue' in RequestBuilder, CollectionSidebar, EnvironmentManager
+6. **Minor wins:** Dead code removal, v-else-if simplification, redundant computed property elimination
+
+**Phase B (deferred):** KeyValueEditor extraction (shared across headers, query params, form-data, MCP env vars, MCP headers) and mcp.vue decomposition (1272-line monolith) deferred for separate session.
+
+**Test results:** 224/224 passing, zero breaking changes, all optimizations backwards-compatible.

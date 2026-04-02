@@ -43,3 +43,21 @@
 - Test Fixture: `tests/APIneer.Api.Tests/ApiTestFixture.cs`
 
 **Decision:** Full optimization report delivered to `.squad/decisions/inbox/arthur-csharp-modernization-review.md` with 16 findings organized by priority. Top recommendations: static JsonSerializerOptions, ExecuteDelete in test fixture, FrozenSet for validation, primary constructors (4 files).
+
+### 2026-04-02 — Optimization Implementation Complete
+
+**Status:** ✅ Resolved
+
+Marcus implemented all 12 C# optimization findings from the review:
+- Static `JsonSerializerOptions` — eliminated repeated allocation in request serialization
+- `FrozenSet<string>` — converted 3 validation sets (HTTP methods, code languages, transport types)
+- Primary constructors — 4 files modernized (AuthHandler, CredentialProtector, McpConnectionManager, McpConnection)
+- `ExecuteDelete()` — test fixture now uses batch deletion for 9 tables instead of RemoveRange + SaveChanges
+- N+1 query fix — reorder endpoint now uses single materialized query instead of per-item FindAsync
+- BFS folder deletion — CollectDescendantFolderIds now single-query breadth-first instead of recursive depth-first
+- `[GeneratedRegex]` — 2 regex patterns compile at source-generation time
+- Records — ProxyError and RedirectEntry converted from mutable classes
+- Collection expressions — modern C# 12.0 initializer syntax
+- String comparison — applied StringComparison.Ordinal throughout
+
+**Impact:** Solution compiles clean. All 384 tests pass (8 skipped, 7 pre-existing unrelated failures). Optimizations are internal/performance-focused with zero breaking changes to API contract.

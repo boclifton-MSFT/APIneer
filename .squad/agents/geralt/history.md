@@ -9,6 +9,12 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### Model Preferences (2026-04-02)
+
+**Decision:** Use `claude-opus-4.6-1m` for planning/architecture work and `claude-sonnet-4.6` for code review. Planning and security are important enough to warrant the biggest model capacity.
+
+**Rationale:** User directive — captured for team memory. Opus provides superior reasoning for complex architectural decisions and long-context planning. Sonnet is optimized for focused code review and targeted improvements.
+
 ### Phase 8.4 — Documentation Complete (2026-03-30)
 **What:** Completed comprehensive project documentation covering README, API reference, and architecture design.
 

@@ -1,6 +1,0 @@
-Review: C# and TypeScript optimization opportunities
-
-Arthur: 16 C# findings (JsonSerializerOptions, ExecuteDelete, FrozenSet, primary constructors)
-Dutch: 8 frontend categories (shared types, defineModel, KeyValueEditor, mcp.vue decomposition)
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

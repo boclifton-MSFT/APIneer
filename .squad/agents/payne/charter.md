@@ -38,8 +38,9 @@
 
 ## Model
 
-- **Preferred:** auto
-- **Rationale:** Coordinator selects the best model based on task type — cost first unless writing code
+- **Security audits / vulnerability reviews:** `claude-opus-4.6-1m` (premium — security is high-stakes)
+- **Code review (security-focused):** `claude-sonnet-4.6`
+- **Documentation / reports:** `claude-haiku-4.5`
 - **Fallback:** Standard chain — the coordinator handles fallback automatically
 
 ## Collaboration

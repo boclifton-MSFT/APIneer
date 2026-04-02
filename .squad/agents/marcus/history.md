@@ -9,6 +9,18 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### Arthur's C# Optimization Pass (12 items)
+- **Static `JsonSerializerOptions`:** Shared `Program.CaseInsensitiveJsonOptions` in `partial class Program`. Avoids per-request allocation.
+- **`FrozenSet<string>`:** Validation sets (`ValidHttpMethods`, `ValidCodeLanguages`, `ValidExportFormats`, `ValidTransportTypes`) moved to `partial class Program` as `FrozenSet<string>` with appropriate comparers. Requires `using System.Collections.Frozen;`.
+- **Primary constructors:** `AuthHandler`, `CredentialProtector` (also removed dead `_provider` field), `McpConnectionManager`, `McpConnection` — all converted. Fields replaced by direct parameter use.
+- **`ExecuteUpdateAsync`:** Environment activation deactivates siblings via bulk SQL (`ExecuteUpdateAsync`) instead of load-all→mutate→save. Excludes target entity (`e.Id != id`) to avoid change tracker conflicts.
+- **`ExecuteDeleteAsync`:** Bulk history clear uses `ExecuteDeleteAsync()` — single SQL statement, no entity loading.
+- **N+1 reorder fix:** Single `Where(...Contains(...))` query replaces loop of `FindAsync` calls. Dictionary lookup for sort order assignment.
+- **`[GeneratedRegex]`:** Variable resolution regex (`\{\{(\w+)\}\}`) and CurlImporter backslash-continuation regex are source-generated via `[GeneratedRegex]` on `partial` classes.
+- **Records:** `ProxyError` and `RedirectEntry` converted from classes with `required` props to positional records. Updated `ProxyEngine.cs` call sites to use positional constructors.
+- **Minor:** `Array.Empty<object>()` → `[]`, `StringComparison.OrdinalIgnoreCase` for GET check in `CurlExporter`, BFS queue for `CollectDescendantFolderIds` (batch queries by tree level).
+- **Key pattern:** `partial class Program` at bottom of `Program.cs` holds all static fields and GeneratedRegex methods. Top-level statements reference them as `Program.FieldName`.
+
 ### 2026-03-30: E2E API Fixes — Health, Draft Requests, ProxyEngine Wiring
 - **`/api/health` endpoint:** Added at `/api/health` returning `{ status, timestamp }`. Original `/health` kept for backward compat
 - **Seed data:** Default workspace + collection created on first startup (after migrations) so requests can be created immediately

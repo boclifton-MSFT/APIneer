@@ -252,6 +252,28 @@ All tests passing. Phase 1-8 complete.
 - Tests (Freeman): MCP server config CRUD can be tested with standard API test patterns. Transport/connection tests will need mock MCP servers.
 - Security (Payne): Stdio transport spawns child processes — environment variables may contain secrets. Review needed when secrets management is integrated.
 
+### HTTP Color Consolidation via useHttpColors Composable (2025-07-18)
+**By:** Kratos (Frontend Dev)  
+**Status:** Active  
+**Decision:** Created `composables/useHttpColors.ts` as the single source of truth for HTTP method colors and status code severity. All components should import from this composable instead of defining color maps inline.  
+**Exports:**
+- `METHOD_COLORS` — semantic color names (success, info, warning, error) for use with Nuxt UI components like `UBadge`
+- `METHOD_CSS_COLORS` — CSS color names (green, blue, orange, etc.) for use with CSS class-based styling
+- `methodColor(method)` — returns semantic color for an HTTP method
+- `methodCssColor(method)` — returns CSS color class suffix for an HTTP method
+- `statusSeverity(code)` — returns severity string (success/info/warning/error) for an HTTP status code
+- `HttpMethod` type — union of valid HTTP methods  
+**Rationale:** Color logic was duplicated across `history.vue`, `MethodSelector.vue`, `CollectionSidebar.vue`, `CollectionTreeFolder.vue`, and `StatusBadge.vue`. Consolidating prevents drift and makes it trivial to adjust the color scheme globally.  
+**Impact:** Phase B note: When decomposing `mcp.vue`, any HTTP color logic there should also use this composable. CSS `.method-get`, `.method-post` etc. classes in `CollectionSidebar.vue` and `CollectionTreeFolder.vue` still exist as scoped CSS — the composable doesn't replace those CSS rules, only the JS logic that picks colors.
+
+### Model Preferences: Copilot Directive (2026-04-02)
+**By:** boclifton-MSFT (via Copilot)  
+**Status:** Active  
+**Decision:** 
+- **Geralt (Architecture):** Use `claude-opus-4.6-1m` for planning/architecture work and `claude-sonnet-4.6` for code review
+- **Payne (Security):** Use `claude-opus-4.6-1m` for security audits and `claude-haiku-4.5` for docs  
+**Rationale:** User request — planning and security are important enough to warrant the biggest model capacity. Code review and docs benefit from balance of speed and quality.
+
 ## Governance
 
 - All meaningful changes require team consensus
