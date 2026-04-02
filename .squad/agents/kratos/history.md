@@ -9,6 +9,17 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2025-07-18: Phase B MCP Component Decomposition (224/224 tests GREEN)
+- **File structure:** All MCP sub-components live in `src/ui/app/components/mcp/` (McpServerList, McpConnectionForm, McpToolPanel, McpResourcePanel, McpPromptPanel, McpRpcHistory). `KeyValueEditor.vue` lives in `src/ui/app/components/` (general-purpose, not MCP-specific).
+- **Shared composables:** `composables/useMcpHelpers.ts` exports `ConnectionState`, `McpFormData`, `buildEnvObject()`, `buildHeadersObject()`, `parseKeyValueJson()`. `composables/useMcpRpcHistory.ts` uses module-level singleton refs so all panels share one history list without Pinia.
+- **Panel architecture:** `McpToolPanel`, `McpResourcePanel`, `McpPromptPanel` are self-contained — each calls the API directly and logs to history via `useMcpRpcHistory()`. They take `connectionId: string` and `active: boolean` props. Watch `[connectionId, active]` to lazy-fetch only when their tab is active.
+- **Tab state persistence:** Panels use `v-show` (not `v-if`) inside a `v-else` block for `connectionState === 'connected'`. This keeps panel state alive across tab switches (no redundant refetches), matching original behavior. When disconnecting, the `v-else` unmounts all panels, naturally clearing state on reconnect.
+- **McpConnectionForm pattern:** "Dumb" form component — owns its own form state (name, transport, command, args, url, envVars, customHeaders), watches the `server` prop to populate itself, emits `connect(McpFormData)`, `disconnect`, `save(McpFormData)`. The page handles API calls and owns `connectionState`/`connectionId`.
+- **KeyValueEditor pattern:** `defineModel<{key,value}[]>()` with direct array mutation (push/splice). Props: `keyPlaceholder`, `valuePlaceholder`. Used in `McpConnectionForm` for env vars and custom headers.
+- **Brady's organization preference:** Feature-specific components go in a named subfolder under `components/`. Reusable/general-purpose components stay at the `components/` root.
+- **`size="2xs"` Nuxt UI issue:** Nuxt UI v4's UButton only accepts `xs | sm | md | lg | xl`. The original mcp.vue used `size="2xs"` (a pre-existing TS error). All new components use `size="xs"` to stay type-clean.
+- **Type note:** Dynamic schema-driven toolArgs (`Record<string, any>`) is intentional — MCP input schemas are dynamic JSON Schema objects so `any` is appropriate there. `toolResult` also uses `Record<string, any>` for the same reason.
+
 ### 2025-07-18: Phase A Frontend Optimizations (224/224 tests GREEN)
 - **Type deduplication:** `Collection`, `CollectionFolder`, `CollectionRequest` interfaces now exported from `~/composables/useApi.ts` and imported by `CollectionSidebar.vue`, `CollectionTree.vue`, `CollectionTreeFolder.vue`, `CollectionPicker.vue`. No more copy-pasted interfaces.
 - **`defineModel` adoption:** `UrlInput.vue`, `MethodSelector.vue`, `HeadersEditor.vue`, `BodyEditor.vue`, `EnvironmentSelector.vue` now use Vue 3.4+ `defineModel()` instead of manual prop+emit pattern. BodyEditor has two models: `defineModel<string>()` for body content and `defineModel<string>('bodyType')` for body type.

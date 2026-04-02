@@ -82,8 +82,63 @@
 
 ---
 
+## Decision: MCP Component Organization & Architecture
+
+**Author:** Kratos (Frontend Dev)  
+**Date:** 2026-04-02  
+**Status:** Implemented — 224/224 tests GREEN
+
+Decomposed `pages/mcp.vue` (1,272 lines) into 6 MCP-specific sub-components + 1 general-purpose component + 2 composables.
+
+**File Structure:**
+```
+src/ui/app/
+  components/
+    KeyValueEditor.vue              ← General-purpose reusable (NOT in mcp/)
+    mcp/
+      McpServerList.vue             ← Sidebar server list
+      McpConnectionForm.vue         ← Form + connect/disconnect
+      McpToolPanel.vue              ← Tool listing + execution
+      McpResourcePanel.vue          ← Resource listing + reading
+      McpPromptPanel.vue            ← Prompt listing + execution
+      McpRpcHistory.vue             ← RPC history accordion
+  composables/
+    useMcpHelpers.ts                ← ConnectionState, McpFormData, builders
+    useMcpRpcHistory.ts             ← Module-level singleton history
+  pages/
+    mcp.vue                         ← ~160 lines, thin orchestrator
+```
+
+**Key Architecture:**
+1. `useMcpRpcHistory` singleton pattern — module-level ref, all panels share history
+2. `v-show` + `active` prop — panels keep state across tab switches, lazy-fetch when activated
+3. `McpConnectionForm` dumb emitter — owns form state, page handles API calls
+4. `KeyValueEditor` in components root — general-purpose, reusable across headers/params/env vars
+5. `size="xs"` convention — Nuxt UI v4 standard sizes only
+
+---
+
+## Workflow Directive: Standard Code Review Gates
+
+**Author:** boclifton-MSFT (via Copilot)  
+**Date:** 2026-04-02T15:25:00Z  
+**Status:** Codified in routing.md and ceremonies.md
+
+Standard coding workflow now includes optimization experts at two gates:
+1. **Pre-implementation:** Geralt creates plan → Dutch/Arthur review plan for optimization opportunities
+2. **Post-implementation:** Marcus/Kratos implement code → Dutch/Arthur review code after implementation
+
+This applies to any workflow where code is being written. Optimization review is a standard step, not optional.
+
+**Why:** Ensures code quality and modern patterns considered at both planning and implementation stages.
+
+---
+
 ## Status
 - **Arthur findings:** Documented 2026-04-02T14:54:00Z
 - **Dutch findings:** Documented 2026-04-02T14:54:00Z
-- **Orchestration logs:** Created for both agents
-- **Session log:** Created summarizing both reviews
+- **Kratos implementation:** Documented 2026-04-02T15:18:00Z
+- **Orchestration logs:** Created for Arthur, Dutch, Kratos
+- **Session logs:** Created summarizing reviews and implementation
+- **Workflow directive:** Codified standard gates
+- **Model directive:** Geralt (opus-4.6-1m for planning, sonnet-4.6 for review), Payne (opus-4.6-1m for audits, haiku-4.5 for docs)

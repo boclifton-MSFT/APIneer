@@ -1,0 +1,7 @@
+Log mcp.vue decomposition + workflow directives
+
+Kratos: mcp.vue split into 5 sub-components + KeyValueEditor
+Workflow: optimization pre/post review gates added
+Models: Geralt/Payne task-specific premium models configured
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

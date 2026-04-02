@@ -40,3 +40,14 @@ How to decide who handles what.
 5. **"Team, ..." → fan-out.** Spawn all relevant agents in parallel as `mode: "background"`.
 6. **Anticipate downstream work.** If a feature is being built, spawn the tester to write test cases from requirements simultaneously.
 7. **Issue-labeled work** — when a `squad:{member}` label is applied to an issue, route to that member. The Lead handles all `squad` (base label) triage.
+
+## Standard Coding Workflow
+
+For any task involving code changes, follow this pipeline:
+
+1. **Plan** → Geralt (Lead) designs the approach
+2. **Optimization pre-review** → Arthur (C#) and/or Dutch (TS/Vue) review the plan for optimization opportunities before implementation begins
+3. **Implement** → Marcus (backend) and/or Kratos (frontend) write the code
+4. **Optimization post-review** → Arthur (C#) and/or Dutch (TS/Vue) review the implemented code for modern patterns, simplification, and performance
+
+Route Arthur for C#/.NET changes, Dutch for TypeScript/Vue changes, both for cross-stack work.
