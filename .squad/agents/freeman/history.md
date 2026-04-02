@@ -116,6 +116,33 @@
 
 ---
 
+### 2026-04-02: Comprehensive Coverage Audit & Gap Fill
+
+**Audit findings — C# backend:**
+- Auth, ImportExport, Collections, Proxy, Security/CredentialProtector, Environments/VariableResolution all had existing coverage.
+- **Critical gap:** `Mcp/` directory had ZERO tests despite having 6 source files.
+
+**New C# tests created:**
+- `tests/APIneer.Api.Tests/Mcp/McpConnectionTests.cs` — 27 tests covering: initial state (Disconnected, null capabilities/serverInfo, unique IDs), ConnectAsync happy path (state transition, capability extraction, serverInfo extraction, notifications sent, request method), ConnectAsync error path (throws InvalidOperationException with server error code, remains Disconnected), all 7 send methods throw when not connected, all 7 send methods dispatch correct JSON-RPC method strings, DisconnectAsync (state transition, disposes transport, safe when already disconnected, subsequent sends throw), DisposeAsync (disconnects + disposes), request ID monotonic sequencing.
+- `tests/APIneer.Api.Tests/Mcp/McpConnectionManagerTests.cs` — 25 tests covering: CreateConnection (returns Disconnected, non-empty GUID, unique IDs across multiple), GetConnection (finds by ID, returns null for unknown/empty), GetAllConnections (empty, all connections, snapshot not live), RemoveConnectionAsync (true/false return, removes from tracking, idempotent, only targets correct connection), CreateTransport validation (throws for unknown type, stdio without command, streamable-http without URL), CreateTransport success (returns HttpMcpTransport with/without headers), DisposeAsync (clears all connections).
+- **Results:** 52 MCP tests pass; full suite: 443 passed, 8 skipped, 0 failed.
+
+**Audit findings — Vue/TS frontend:**
+- All major components had tests. Gaps: 3 composables (useHttpColors, useMcpRpcHistory, useMcpHelpers) and KeyValueEditor component.
+
+**New frontend tests created:**
+- `src/ui/tests/components/useHttpColors.test.ts` — 32 tests for pure functions: methodColor (all 7 methods + unknown + empty + case sensitivity), statusSeverity (2xx/3xx/4xx/5xx/0/1xx boundaries), methodCssColor (all 7 + unknown), METHOD_COLORS/METHOD_CSS_COLORS constants (coverage + count).
+- `src/ui/tests/components/useMcpRpcHistory.test.ts` — 18 tests: addRpcEntry (method, status, request/response storage, timestamp, ID type), LIFO ordering, monotonic IDs, MAX_HISTORY cap at 50 (entries capped, newest retained, oldest discarded), clearRpcHistory (empty, ID counter reset, can add after clear), readonly ref contract.
+- `src/ui/tests/components/useMcpHelpers.test.ts` — 24 tests: buildEnvObject (empty/whitespace/valid/trim/skip-blanks/empty-value/special-chars/last-wins), buildHeadersObject (same logic), parseKeyValueJson (valid/invalid/undefined/empty/null coercion/boolean coercion/array input).
+- `src/ui/tests/components/KeyValueEditor.test.ts` — 16 tests: rendering (default row, correct count from props, pre-fill values, structure, column headers), placeholders (custom + fallback), add row (increases count, new row empty, multiple adds), remove row (decreases count, count invariant, last row replaced with empty, one remove button per row).
+- **Results:** 90 frontend tests pass.
+
+**Key patterns learned:**
+- `NSubstitute.For<IMcpTransport>()` — interface mocking works correctly with `IAsyncDisposable`; use `.Returns(ValueTask.CompletedTask)` for `DisposeAsync()`.
+- `JsonDocument.Parse()` for `JsonElement?` in response fixtures — doc lives long enough for `.Clone()` calls inside `ConnectAsync`; no need to keep doc alive after method returns.
+- **Vue `defineModel` + array mutations in tests:** `model.value.push()/splice()` mutates the prop array. In Nuxt test utils with static `props: { modelValue: [...] }`, the array is a plain JS object and Vue DOES NOT track mutations. Fix: use `reactive([...])` as the prop value — mutations on a reactive array proxy ARE tracked.
+- **Nuxt test environment concurrency:** Running all 25 test files simultaneously causes `window.localStorage?.setItem is not a function` errors and 200+ test skips. Individual files or small groups run cleanly. This is a pre-existing issue unrelated to new tests.
+- **Module-level singleton composables:** `useMcpRpcHistory` uses module-level `ref`. Tests MUST call `clearRpcHistory()` in `beforeEach` to reset state between tests.
 - **2026-03-30 — Proxy Engine test contracts defined (Phase 2.3):**Created 35 failing tests across 6 test files defining the HTTP proxy engine contract. Tests cover: success paths (all HTTP methods), headers (custom/response/Content-Type/User-Agent), body types (JSON/form/text/empty/large), timing (response time & size metrics), error handling (timeout/invalid URL/connection refused/DNS failure — all as structured errors, never exceptions), and redirects (follow by default, capture chain, disable following). Proxy DTOs defined: `ProxyRequest`, `ProxyResponse`, `ProxyError`, `RedirectEntry`, `IProxyEngine`. Key constraints from security doc: 10MB max body, 30s default timeout (1s–5min range), no SSRF protection by design, structured errors instead of exceptions. Test infrastructure uses a raw `HostBuilder` + Kestrel with port 0 for random port allocation — `WebApplication.CreateSlimBuilder()` fought us on default port binding. FluentAssertions v8 renames: `BeGreaterThanOrEqualTo` (not `BeGreaterOrEqualTo`), `HaveCountGreaterThanOrEqualTo`.
 
 - **2025-07-16 — Phase 2.5 Request Builder UI tests (RED):** Created 5 failing test files in `src/ui/tests/components/` covering MethodSelector (7 tests), UrlInput (6 tests), HeadersEditor (7 tests), BodyEditor (9 tests), RequestBuilder (7 tests) — 36 tests total. All fail because components at `~/components/request-builder/*.vue` don't exist yet. Tests use `mount` from `@vue/test-utils` with `data-testid` attributes for reliable selectors. Test infrastructure uses Vitest 4 + `@nuxt/test-utils` (environment: 'nuxt') with MSW 2 for API mocking. Existing test at `tests/setup.ts` configures MSW server globally.
