@@ -12,6 +12,7 @@ interface ResponseData {
   headers: { name: string; value: string }[]
   timeMs: number
   sizeBytes: number
+  error?: string
 }
 
 const props = defineProps<{
@@ -32,6 +33,15 @@ function setTab(tab: typeof tabs[number]) {
   <div>
     <template v-if="isEmpty">
       <div class="p-8 text-center text-muted">Send a request to see the response</div>
+    </template>
+    <template v-else-if="response!.error">
+      <div class="p-4 rounded-lg bg-error/10 border border-error/30">
+        <div class="flex items-center gap-2 mb-1">
+          <UIcon name="i-lucide-alert-circle" class="size-4 text-error" />
+          <span class="font-semibold text-error text-sm">Request Error</span>
+        </div>
+        <p class="text-sm text-error/80">{{ response!.error }}</p>
+      </div>
     </template>
     <template v-else>
       <div class="flex items-center gap-4 mb-4">

@@ -18,6 +18,7 @@ export interface ApiResponse {
   headers: { name: string; value: string }[]
   timeMs: number
   sizeBytes: number
+  error?: string
 }
 
 export interface Collection {
@@ -48,11 +49,11 @@ export interface HistoryEntry {
   id: string
   method: string
   url: string
-  statusCode: number
+  responseStatus: number
   statusText: string
-  timeMs: number
-  sizeBytes: number
-  createdAt: string
+  responseTimeMs: number
+  responseSizeBytes: number
+  executedAt: string
   requestId?: string
 }
 
@@ -146,7 +147,16 @@ export function useApi() {
     }>(`/api/requests/${id}/send`, { method: 'POST' })
 
     if (raw.error) {
-      throw new Error(raw.error.message)
+      return {
+        statusCode: 0,
+        statusText: 'Error',
+        body: '',
+        contentType: '',
+        headers: [],
+        timeMs: 0,
+        sizeBytes: 0,
+        error: raw.error.message
+      } as ApiResponse
     }
 
     let headers: { name: string; value: string }[] = []
@@ -212,7 +222,8 @@ export function useApi() {
 
   // History
   async function getHistory() {
-    return await $fetch<HistoryEntry[]>('/api/history')
+    const response = await $fetch<{ items: HistoryEntry[], page: number, pageSize: number, totalCount: number }>('/api/history')
+    return response.items
   }
 
   async function clearHistory() {

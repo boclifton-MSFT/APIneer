@@ -17,9 +17,9 @@ const selectedEntry = ref<HistoryEntry | null>(null)
 const columns = [
   { accessorKey: 'method', header: 'Method' },
   { accessorKey: 'url', header: 'URL' },
-  { accessorKey: 'statusCode', header: 'Status' },
-  { accessorKey: 'timeMs', header: 'Time' },
-  { accessorKey: 'createdAt', header: 'Date' }
+  { accessorKey: 'responseStatus', header: 'Status' },
+  { accessorKey: 'responseTimeMs', header: 'Time' },
+  { accessorKey: 'executedAt', header: 'Date' }
 ]
 
 async function loadHistory() {
@@ -113,14 +113,14 @@ onMounted(() => {
           <template #url-cell="{ row }">
             <span class="font-mono text-xs truncate max-w-xs block">{{ row.original.url }}</span>
           </template>
-          <template #statusCode-cell="{ row }">
-            <UBadge :label="String(row.original.statusCode)" :color="statusSeverity(row.original.statusCode)" variant="subtle" size="sm" />
+          <template #responseStatus-cell="{ row }">
+            <UBadge :label="String(row.original.responseStatus)" :color="statusSeverity(row.original.responseStatus)" variant="subtle" size="sm" />
           </template>
-          <template #timeMs-cell="{ row }">
-            <span class="text-sm text-muted">{{ formatTime(row.original.timeMs) }}</span>
+          <template #responseTimeMs-cell="{ row }">
+            <span class="text-sm text-muted">{{ formatTime(row.original.responseTimeMs) }}</span>
           </template>
-          <template #createdAt-cell="{ row }">
-            <span class="text-sm text-muted">{{ formatDate(row.original.createdAt) }}</span>
+          <template #executedAt-cell="{ row }">
+            <span class="text-sm text-muted">{{ formatDate(row.original.executedAt) }}</span>
           </template>
         </UTable>
 
@@ -135,19 +135,19 @@ onMounted(() => {
               <div class="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span class="text-muted">Status:</span>
-                  <UBadge :label="`${selectedEntry.statusCode} ${selectedEntry.statusText}`" :color="statusSeverity(selectedEntry.statusCode)" variant="subtle" class="ml-2" />
+                  <UBadge :label="`${selectedEntry.responseStatus} ${selectedEntry.statusText}`" :color="statusSeverity(selectedEntry.responseStatus)" variant="subtle" class="ml-2" />
                 </div>
                 <div>
                   <span class="text-muted">Time:</span>
-                  <span class="ml-2">{{ formatTime(selectedEntry.timeMs) }}</span>
+                  <span class="ml-2">{{ formatTime(selectedEntry.responseTimeMs) }}</span>
                 </div>
                 <div>
                   <span class="text-muted">Size:</span>
-                  <span class="ml-2">{{ selectedEntry.sizeBytes }} bytes</span>
+                  <span class="ml-2">{{ selectedEntry.responseSizeBytes }} bytes</span>
                 </div>
                 <div>
                   <span class="text-muted">Date:</span>
-                  <span class="ml-2">{{ formatDate(selectedEntry.createdAt) }}</span>
+                  <span class="ml-2">{{ formatDate(selectedEntry.executedAt) }}</span>
                 </div>
               </div>
             </div>

@@ -189,11 +189,20 @@ public sealed class ProxyEngine(IHttpClientFactory httpClientFactory) : IProxyEn
 
         if (includeBody && proxyRequest.Body is not null)
         {
-            var contentType = proxyRequest.Headers
+            var rawContentType = proxyRequest.Headers
                 .FirstOrDefault(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
                 .Value ?? proxyRequest.BodyType ?? "text/plain";
 
-            httpRequest.Content = new StringContent(proxyRequest.Body, Encoding.UTF8, contentType);
+            var contentType = NormalizeContentType(rawContentType);
+
+            try
+            {
+                httpRequest.Content = new StringContent(proxyRequest.Body, Encoding.UTF8, contentType);
+            }
+            catch (FormatException)
+            {
+                httpRequest.Content = new StringContent(proxyRequest.Body, Encoding.UTF8, "application/octet-stream");
+            }
         }
 
         return httpRequest;
@@ -245,6 +254,19 @@ public sealed class ProxyEngine(IHttpClientFactory httpClientFactory) : IProxyEn
 
         return size;
     }
+
+    /// <summary>
+    /// Maps short-form content type aliases (e.g. "json") to valid MIME types.
+    /// </summary>
+    private static string NormalizeContentType(string contentType) => contentType.Trim().ToLowerInvariant() switch
+    {
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "text" => "text/plain",
+        "html" => "text/html",
+        "form" => "application/x-www-form-urlencoded",
+        _ => contentType
+    };
 
     private static bool IsConnectionRefused(HttpRequestException ex)
     {

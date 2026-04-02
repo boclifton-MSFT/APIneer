@@ -880,12 +880,21 @@ app.MapPost("/api/requests/{id:guid}/test", async (Guid id, AppDbContext db) =>
 
 app.MapPost("/api/environments", async (AppDbContext db, CreateEnvironmentDto dto) =>
 {
+    var workspaceId = dto.WorkspaceId;
+    if (workspaceId == Guid.Empty)
+    {
+        var defaultWorkspace = await db.Workspaces.FirstOrDefaultAsync();
+        if (defaultWorkspace is null)
+            return Results.BadRequest(new { error = "No workspace exists. Create a workspace first." });
+        workspaceId = defaultWorkspace.Id;
+    }
+
     var now = DateTime.UtcNow;
     var environment = new APIneer.Api.Models.Environment
     {
         Id = Guid.NewGuid(),
         Name = dto.Name,
-        WorkspaceId = dto.WorkspaceId,
+        WorkspaceId = workspaceId,
         IsActive = false,
         CreatedAt = now,
         UpdatedAt = now
