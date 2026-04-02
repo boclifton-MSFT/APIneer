@@ -12,4 +12,18 @@
 
 ## Learnings
 
-*No learnings recorded yet — this section grows as I review code and discover patterns.*
+### Frontend Architecture (2025-07-18)
+- **Composables:** `useApi.ts` (API client, all type definitions), `useCollectionDragDrop.ts` (shared drag state)
+- **Pages:** `index.vue` (request builder, main workspace), `collections.vue`, `environments.vue`, `history.vue`, `mcp.vue` (MCP server management — largest file at 1272 lines)
+- **Layout:** Single `dashboard.vue` layout with collapsible sidebar + Nuxt UI v4 dashboard components
+- **Component tree:** `request-builder/` (5 components), `response/` (4 components), `collections/` (5 components), `auth/` (1), `environments/` (1), `import-export/` (1), `app/` (1 — CommandPalette)
+- **Pattern:** All pages use `onMounted` + manual `ref<boolean>` loading state (not `useAsyncData`)
+- **Pattern:** Toast notifications follow `{ title, color, icon? }` shape throughout
+- **Known duplication:** Type interfaces (Collection/Folder/Request) duplicated across 4+ collection components instead of importing from `useApi.ts`
+- **Known duplication:** Key-value editor pattern repeated in headers, query params, body form-data, MCP env vars, MCP headers
+- **Known duplication:** Method color and status color mappings defined separately in multiple files
+- **v-model pattern:** 5 components use manual `defineProps`+`defineEmits` instead of `defineModel`
+- **Nuxt auto-imports:** Several files explicitly import `ref`, `nextTick`, `computed` from 'vue' and components from relative paths unnecessarily
+- **`useApi.ts`:** Unused import `UseFetchOptions`, `sendRequest()` contains inline status text map and header parsing logic that could be extracted
+- **`mcp.vue`:** Uses many `any` types for tools/resources/prompts despite types existing in `useApi.ts`
+- **Test stack:** Vitest + @nuxt/test-utils + MSW, test files mirror component names in `tests/components/`

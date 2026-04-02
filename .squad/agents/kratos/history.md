@@ -265,6 +265,28 @@
 - **Component modified:** `app/components/request-builder/BodyEditor.vue` — added form-data key-value table editor
 - **Features:** Table with Key/Value/Actions columns, Add Field button, remove (✕) per row, data-testid attributes (`formdata-key-input`, `formdata-value-input`, `remove-formdata`, `add-formdata`, `formdata-table`)
 - **Serialization:** URL-encoded format (`key1=value1&key2=value2`) via `encodeURIComponent`/`decodeURIComponent`. Handles `+` as space, empty strings, single pairs, encoded special characters
+
+### 2026-04-02: Code Optimization Review — Dutch Frontend Findings
+
+Optimization review by Dutch identified 8 categories of frontend optimization opportunities:
+
+**HIGH-IMPACT REFACTORING (4):**
+1. **Shared type definitions** — `Collection`, `CollectionFolder`, `CollectionRequest` interfaces duplicated in `CollectionSidebar.vue`, `CollectionTree.vue`, `CollectionTreeFolder.vue`, `CollectionPicker.vue`. Import from `useApi.ts` instead.
+2. **defineModel adoption** — 5 components using manual `defineProps`+`defineEmits` pattern: `UrlInput`, `MethodSelector`, `HeadersEditor`, `BodyEditor`, `EnvironmentSelector`. Vue 3.4+ `defineModel()` eliminates boilerplate entirely.
+3. **KeyValueEditor extraction** — Key-value pair table (add/remove row) reimplemented in `HeadersEditor.vue`, `QueryParamsEditor.vue`, `BodyEditor.vue` (form-data), `mcp.vue` (env vars/custom headers). Create single reusable component (~200 lines consolidated).
+4. **mcp.vue decomposition** — Largest file at 1272 lines (63KB), 4x typical size. Split into: `McpServerList`, `McpConnectionForm`, `McpCapabilityTabs`, `McpToolPanel`, `McpResourcePanel`, `McpPromptPanel`, `McpRpcHistory`.
+
+**MEDIUM-IMPACT (2):**
+5. **Color mapping consolidation** — Method→color mapping in `history.vue`, `MethodSelector.vue`, `CollectionSidebar.vue`, `CollectionTreeFolder.vue` (CSS). Status→color in `history.vue` and `StatusBadge.vue`. Create shared utilities.
+6. **Type annotations** — `mcp.vue` uses `any` for tools/resources/prompts. Types exist in `useApi.ts`. Replace `any` with proper types.
+
+**LOW-IMPACT (2):**
+7. **Nuxt auto-import cleanup** — Remove unnecessary explicit imports of `ref`, `computed`, `nextTick` from 'vue' (Nuxt auto-imports). Remove unused `UseFetchOptions` from `useApi.ts`.
+8. **Dashboard constant in computed** — `dashboard.vue` wraps constant array in `computed()` without reactivity. Use plain `const`.
+
+**Estimated effort:** Items 1-4 = 4-6 hours. Items 5-8 = 3-5 hours. Test updates = 3-4 hours.
+
+Full details: `.squad/decisions/decisions.md` and `.squad/orchestration-log/2026-04-02T14-54-dutch.md`
 - **State management:** Internal `formDataEntries` ref (array of `{key, value}`), `suppressFormDataSync` flag to prevent recursive watch loops (same pattern as QueryParamsEditor)
 - **Bidirectional sync:** `watch(modelValue)` parses URL-encoded string → entries when bodyType is form-data. `emitFormDataUpdate()` serializes entries → URL-encoded string and emits `update:modelValue`
 - **Mode isolation:** Form-data table only renders when `bodyType === 'form-data'`. Textarea only renders for raw/json. None mode shows neither. All existing modes unchanged.

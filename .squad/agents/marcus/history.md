@@ -264,6 +264,36 @@
   - Proxy endpoints for tools, resources, prompts, ping
 - **Error handling:** JSON-RPC errors returned as structured 502; validation errors as 400; transport failures as 502
 - **Test fixture:** Updated `ApiTestFixture.CreateClient()` to clear `McpServerConfigs` table
+
+### 2026-04-02: Code Optimization Review — Arthur C# Findings
+
+Optimization review by Arthur identified 16 C# modernization opportunities affecting backend code Marcus maintains:
+
+**HIGH-IMPACT PERFORMANCE (5):**
+1. **Static JsonSerializerOptions** — `Program.cs` lines ~600, ~615 allocate new options per request. Move to static readonly field for STJ caching.
+2. **ExecuteDelete in test fixture** — `ApiTestFixture.cs` lines ~47-55 + `Program.cs` line ~778. Replace `RemoveRange` + `SaveChanges` with `ExecuteDeleteAsync()`.
+3. **FrozenSet for validation sets** — `Program.cs` lines ~141, ~785, ~1276, ~1562. Use `FrozenSet<string>` instead of `HashSet<string>` (read-only collections).
+4. **ExecuteUpdate for batch updates** — `Program.cs` lines ~1053-1059. Single SQL UPDATE instead of load-mutate-save for sibling deactivation.
+5. **N+1 query fix in reorder endpoint** — `Program.cs` lines ~330-335. Load all items in one query instead of `FindAsync()` per item.
+
+**HIGH-IMPACT READABILITY (4):**
+6. **Primary constructors** (4 files) — `AuthHandler.cs`, `CredentialProtector.cs`, `McpConnectionManager.cs`, `McpConnection.cs`. Removes ~20 lines boilerplate.
+7. **Records for DTOs** — `ProxyError.cs`, `RedirectEntry.cs`. Convert mutable classes to records (equality, ToString, deconstruction).
+8. **Collection expressions** — `Program.cs` line ~1423. Replace `Array.Empty<object>()` with `[]`.
+
+**MEDIUM-IMPACT PERFORMANCE (3):**
+9. **Compiled regex** — `Program.cs` line ~1455. Use `[GeneratedRegex]` for variable resolution pattern.
+10. **Recursive query optimization** — `Program.cs` `CollectDescendantFolderIds`. Batch queries by tree level instead of per-node.
+11. **WebSocketProxy StringBuilder** — Avoid allocation for single-frame messages.
+
+**LOWER-PRIORITY (4):**
+12. Remove unused `_provider` field in `CredentialProtector.cs`
+13. Duplicate regex in `CurlImporter` line 18
+14. Missing `StringComparison` in `CurlExporter` line 35
+
+**Implementation order:** Items 1-5 (~1 hour for top gains) → Items 6-8 (readability) → Items 9-14 (remaining)
+
+Full details: `.squad/decisions/decisions.md` and `.squad/orchestration-log/2026-04-02T14-54-arthur.md`
 - **All 391 existing tests passing** — zero regressions
 - **Test results:** 380 passed, 0 failed, 8 skipped (pre-existing auth security skips)
 
