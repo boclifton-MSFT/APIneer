@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { McpServerConfig } from '~/composables/useApi'
-import type { McpFormData, ConnectionState } from '~/composables/useMcpHelpers'
+import type { McpFormData, ConnectionState, OAuthUIState } from '~/composables/useMcpHelpers'
 import { buildEnvObject, buildHeadersObject } from '~/composables/useMcpHelpers'
 
 definePageMeta({
@@ -18,6 +18,11 @@ const connectionState = ref<ConnectionState>('disconnected')
 const connectionId = ref<string | null>(null)
 const showNewDialog = ref(false)
 const activeTab = ref('tools')
+
+// OAuth flow state
+const oauthState = ref<OAuthUIState>({ status: 'idle' })
+const oauthFlowId = ref<string | null>(null)
+let oauthPollTimer: ReturnType<typeof setInterval> | null = null
 
 const tabs = [
   { label: 'Tools', value: 'tools', icon: 'i-lucide-wrench' },
@@ -48,7 +53,17 @@ async function loadServers() {
   }
 }
 
+function stopOAuthPolling() {
+  if (oauthPollTimer) {
+    clearInterval(oauthPollTimer)
+    oauthPollTimer = null
+  }
+}
+
 function selectServer(id: string) {
+  stopOAuthPolling()
+  oauthFlowId.value = null
+  oauthState.value = { status: 'idle' }
   selectedServerId.value = id
   connectionState.value = 'disconnected'
   connectionId.value = null
@@ -58,7 +73,9 @@ async function handleSave(formData: McpFormData) {
   if (!selectedServerId.value || !formData.name.trim()) return
   try {
     const envObj = buildEnvObject(formData.envVars)
-    const headersObj = buildHeadersObject(formData.customHeaders)
+    const headersObj = formData.authMethod !== 'github-oauth'
+      ? buildHeadersObject(formData.customHeaders)
+      : undefined
     await api.updateServerConfig(selectedServerId.value, {
       name: formData.name.trim(),
       transportType: formData.transportType,
@@ -80,7 +97,8 @@ async function handleConnect(formData: McpFormData) {
   connectionState.value = 'connecting'
   try {
     const env = buildEnvObject(formData.envVars)
-    const headers = formData.transportType === 'streamable-http'
+    // GitHub OAuth: backend auto-injects the stored token; don't pass custom headers
+    const headers = formData.transportType === 'streamable-http' && formData.authMethod !== 'github-oauth'
       ? buildHeadersObject(formData.customHeaders)
       : undefined
     const result = await api.mcpConnect({
@@ -119,10 +137,70 @@ async function handleDisconnect() {
   }
 }
 
+async function handleStartOAuth(clientId: string, scopes: string) {
+  if (!selectedServerId.value) return
+  try {
+    const result = await api.startMcpOAuth(selectedServerId.value, clientId, scopes)
+    oauthFlowId.value = result.flowId
+    oauthState.value = {
+      status: 'pending',
+      userCode: result.userCode,
+      verificationUri: result.verificationUri,
+      expiresAt: Date.now() + result.expiresIn * 1000
+    }
+    oauthPollTimer = setInterval(async () => {
+      if (!oauthFlowId.value) return
+      try {
+        const status = await api.pollMcpOAuth(oauthFlowId.value)
+        if (status.status === 'complete') {
+          stopOAuthPolling()
+          oauthState.value = { status: 'complete' }
+          toast.add({ title: 'Authenticated with GitHub', color: 'success', icon: 'i-lucide-check' })
+        } else if (status.status === 'expired') {
+          stopOAuthPolling()
+          oauthState.value = { status: 'expired', errorMessage: 'Authorization window expired. Please try again.' }
+        } else if (status.status === 'denied') {
+          stopOAuthPolling()
+          oauthState.value = { status: 'denied', errorMessage: 'Authorization was denied.' }
+        }
+        // 'pending' — keep polling
+      } catch {
+        // Polling errors are transient — keep polling
+      }
+    }, 5000)
+  } catch (err: unknown) {
+    const e = err as { data?: { message?: string }; message?: string }
+    oauthState.value = {
+      status: 'error',
+      errorMessage: e?.data?.message || e?.message || 'Failed to start OAuth flow'
+    }
+  }
+}
+
+function handleCancelOAuth() {
+  stopOAuthPolling()
+  oauthFlowId.value = null
+  oauthState.value = { status: 'idle' }
+}
+
+async function handleRevokeOAuth() {
+  if (!selectedServerId.value) return
+  try {
+    await api.revokeMcpOAuth(selectedServerId.value)
+    oauthState.value = { status: 'idle' }
+    toast.add({ title: 'GitHub authentication revoked', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to revoke token', color: 'error' })
+  }
+}
+
 async function deleteServer(id: string) {
   try {
     await api.deleteServerConfig(id)
     if (selectedServerId.value === id) {
+      stopOAuthPolling()
+      oauthFlowId.value = null
+      oauthState.value = { status: 'idle' }
       selectedServerId.value = null
       connectionState.value = 'disconnected'
       connectionId.value = null
@@ -163,6 +241,7 @@ async function createServer() {
 }
 
 onMounted(() => loadServers())
+onUnmounted(() => stopOAuthPolling())
 </script>
 
 <template>
@@ -203,9 +282,13 @@ onMounted(() => loadServers())
           :server="selectedServer"
           :connection-state="connectionState"
           :connection-id="connectionId"
+          :oauth-state="oauthState"
           @connect="handleConnect"
           @disconnect="handleDisconnect"
           @save="handleSave"
+          @start-o-auth="handleStartOAuth"
+          @cancel-o-auth="handleCancelOAuth"
+          @revoke-o-auth="handleRevokeOAuth"
         />
 
         <USeparator />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { McpServerConfig } from '~/composables/useApi'
-import type { ConnectionState, McpFormData } from '~/composables/useMcpHelpers'
+import type { ConnectionState, McpFormData, OAuthUIState } from '~/composables/useMcpHelpers'
 import { parseKeyValueJson } from '~/composables/useMcpHelpers'
 
 defineOptions({ name: 'McpConnectionForm' })
@@ -9,12 +9,16 @@ const props = defineProps<{
   server: McpServerConfig
   connectionState: ConnectionState
   connectionId: string | null
+  oauthState: OAuthUIState
 }>()
 
 const emit = defineEmits<{
   connect: [formData: McpFormData]
   disconnect: []
   save: [formData: McpFormData]
+  startOAuth: [clientId: string, scopes: string]
+  cancelOAuth: []
+  revokeOAuth: []
 }>()
 
 const form = reactive<McpFormData>({
@@ -24,7 +28,10 @@ const form = reactive<McpFormData>({
   args: '',
   url: '',
   envVars: [{ key: '', value: '' }],
-  customHeaders: [{ key: '', value: '' }]
+  customHeaders: [{ key: '', value: '' }],
+  authMethod: 'none',
+  oauthClientId: '',
+  oauthScopes: 'repo'
 })
 
 watch(() => props.server, (server) => {
@@ -35,6 +42,9 @@ watch(() => props.server, (server) => {
   form.url = server.url || ''
   form.envVars = parseKeyValueJson(server.environmentVariables)
   form.customHeaders = parseKeyValueJson(server.headers)
+  form.authMethod = 'none'
+  form.oauthClientId = ''
+  form.oauthScopes = 'repo'
 }, { immediate: true })
 
 const statusDot = computed(() => {
@@ -51,6 +61,52 @@ const canConnect = computed(() =>
     (form.transportType === 'streamable-http' && !!form.url)
   )
 )
+
+// Countdown clock for OAuth pending state
+const now = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(() => {
+  clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
+})
+
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
+})
+
+const timeRemaining = computed(() => {
+  const { expiresAt, status } = props.oauthState
+  if (status !== 'pending' || !expiresAt) return ''
+  const ms = expiresAt - now.value
+  if (ms <= 0) return 'expired'
+  const mins = Math.floor(ms / 60000)
+  const secs = Math.floor((ms % 60000) / 1000)
+  return `${mins}m ${secs}s`
+})
+
+const copied = ref(false)
+function copyUserCode() {
+  const code = props.oauthState.userCode
+  if (!code) return
+  navigator.clipboard.writeText(code).then(() => {
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  })
+}
+
+function openVerificationUrl() {
+  if (props.oauthState.verificationUri) {
+    window.open(props.oauthState.verificationUri, '_blank')
+  }
+}
+
+const oauthErrorMessage = computed(() => {
+  const s = props.oauthState
+  if (s.errorMessage) return s.errorMessage
+  if (s.status === 'expired') return 'Authorization window expired. Please try again.'
+  if (s.status === 'denied') return 'Authorization was denied.'
+  return 'An error occurred. Please try again.'
+})
 </script>
 
 <template>
@@ -125,7 +181,49 @@ const canConnect = computed(() =>
         <UInput v-model="form.url" placeholder="http://localhost:3000/mcp" />
       </UFormField>
 
-      <div class="env-vars-section">
+      <!-- Auth Method selector -->
+      <UFormField label="Auth Method">
+        <div class="flex gap-3">
+          <label class="transport-option" :class="{ active: form.authMethod === 'none' }">
+            <input
+              type="radio"
+              name="authMethod"
+              value="none"
+              :checked="form.authMethod === 'none'"
+              class="sr-only"
+              @change="form.authMethod = 'none'"
+            >
+            <span>None</span>
+          </label>
+          <label class="transport-option" :class="{ active: form.authMethod === 'bearer-token' }">
+            <input
+              type="radio"
+              name="authMethod"
+              value="bearer-token"
+              :checked="form.authMethod === 'bearer-token'"
+              class="sr-only"
+              @change="form.authMethod = 'bearer-token'"
+            >
+            <UIcon name="i-lucide-key" class="size-4" />
+            <span>Bearer Token</span>
+          </label>
+          <label class="transport-option" :class="{ active: form.authMethod === 'github-oauth' }">
+            <input
+              type="radio"
+              name="authMethod"
+              value="github-oauth"
+              :checked="form.authMethod === 'github-oauth'"
+              class="sr-only"
+              @change="form.authMethod = 'github-oauth'"
+            >
+            <UIcon name="i-lucide-github" class="size-4" />
+            <span>GitHub OAuth</span>
+          </label>
+        </div>
+      </UFormField>
+
+      <!-- Bearer Token: show custom headers table -->
+      <div v-if="form.authMethod === 'bearer-token'" class="env-vars-section">
         <label class="text-sm font-medium text-highlighted block mb-1">Custom Headers</label>
         <p class="text-xs text-muted mb-2">Add authentication headers (e.g., Authorization: Bearer &lt;token&gt;)</p>
         <KeyValueEditor
@@ -133,6 +231,132 @@ const canConnect = computed(() =>
           key-placeholder="Authorization"
           value-placeholder="Bearer <token>"
         />
+      </div>
+
+      <!-- None: show subtle custom headers section for advanced use -->
+      <div v-else-if="form.authMethod === 'none'" class="env-vars-section">
+        <label class="text-sm font-medium text-highlighted block mb-1">Custom Headers</label>
+        <p class="text-xs text-muted mb-2">Add authentication headers (e.g., Authorization: Bearer &lt;token&gt;)</p>
+        <KeyValueEditor
+          v-model="form.customHeaders"
+          key-placeholder="Authorization"
+          value-placeholder="Bearer <token>"
+        />
+      </div>
+
+      <!-- GitHub OAuth UI -->
+      <div v-else-if="form.authMethod === 'github-oauth'" class="oauth-panel rounded-lg border border-default bg-muted/30 p-4 space-y-3">
+
+        <!-- Idle: login form -->
+        <template v-if="oauthState.status === 'idle'">
+          <div class="flex items-center gap-2 mb-1">
+            <UIcon name="i-lucide-github" class="size-5 text-highlighted" />
+            <span class="text-sm font-medium text-highlighted">Login with GitHub</span>
+          </div>
+          <UFormField label="Client ID">
+            <UInput
+              v-model="form.oauthClientId"
+              placeholder="your-github-oauth-app-client-id"
+            />
+          </UFormField>
+          <UFormField label="Scopes">
+            <UInput
+              v-model="form.oauthScopes"
+              placeholder="repo,read:org"
+            />
+          </UFormField>
+          <UButton
+            icon="i-lucide-github"
+            label="Login with GitHub"
+            :disabled="!form.oauthClientId.trim()"
+            @click="emit('startOAuth', form.oauthClientId, form.oauthScopes)"
+          />
+        </template>
+
+        <!-- Pending: device code flow in progress -->
+        <template v-else-if="oauthState.status === 'pending'">
+          <div class="flex items-center gap-2 mb-1">
+            <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
+            <span class="text-sm font-medium text-highlighted">Waiting for authorization...</span>
+          </div>
+          <p class="text-sm text-muted">
+            Enter this code at
+            <a
+              :href="oauthState.verificationUri"
+              target="_blank"
+              class="text-primary underline"
+            >github.com/login/device</a>
+          </p>
+
+          <!-- User code display -->
+          <div class="flex items-center gap-2">
+            <div class="font-mono text-2xl font-bold tracking-widest bg-default border border-default rounded-md px-4 py-2 select-all">
+              {{ oauthState.userCode }}
+            </div>
+            <UButton
+              :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+              :label="copied ? 'Copied!' : 'Copy'"
+              size="sm"
+              variant="soft"
+              color="neutral"
+              @click="copyUserCode"
+            />
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-2">
+            <UButton
+              icon="i-lucide-external-link"
+              label="Open GitHub"
+              @click="openVerificationUrl"
+            />
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="Cancel"
+              @click="emit('cancelOAuth')"
+            />
+          </div>
+
+          <!-- Countdown -->
+          <p v-if="timeRemaining" class="text-xs text-muted">
+            Expires in {{ timeRemaining }}
+          </p>
+        </template>
+
+        <!-- Complete: authenticated -->
+        <template v-else-if="oauthState.status === 'complete'">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-check-circle" class="size-5 text-green-500" />
+            <span class="text-sm font-semibold text-green-600 dark:text-green-400">Authenticated with GitHub</span>
+          </div>
+          <p v-if="form.oauthScopes" class="text-xs text-muted">
+            Scopes: {{ form.oauthScopes }}
+          </p>
+          <UButton
+            icon="i-lucide-log-out"
+            label="Logout"
+            size="sm"
+            variant="soft"
+            color="error"
+            @click="emit('revokeOAuth')"
+          />
+        </template>
+
+        <!-- Error / Expired / Denied -->
+        <template v-else>
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-alert-circle" class="size-5 text-red-500" />
+            <span class="text-sm text-red-600 dark:text-red-400">{{ oauthErrorMessage }}</span>
+          </div>
+          <UButton
+            icon="i-lucide-refresh-cw"
+            label="Try Again"
+            size="sm"
+            variant="soft"
+            @click="emit('cancelOAuth')"
+          />
+        </template>
       </div>
     </template>
 

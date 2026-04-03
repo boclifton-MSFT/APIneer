@@ -9,6 +9,18 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### 2025-07-19: Phase 4 — Frontend OAuth Login UI (314/314 tests GREEN)
+- **New types in `useMcpHelpers.ts`:** Added `AuthMethod` (`'none' | 'bearer-token' | 'github-oauth'`), `OAuthFlowStatus`, and `OAuthUIState` interface. `McpFormData` extended with `authMethod`, `oauthClientId`, `oauthScopes`.
+- **New API functions in `useApi.ts`:** `startMcpOAuth(serverId, clientId, scopes?)`, `pollMcpOAuth(flowId)`, `revokeMcpOAuth(serverId)`. Also added `McpOAuthStartResponse` and `McpOAuthStatusResponse` interfaces.
+- **`McpConnectionForm` pattern for OAuth:** The form owns `authMethod`, `oauthClientId`, `oauthScopes` in its reactive state (emitted up via `connect`/`save`). The parent (`mcp.vue`) owns the `OAuthUIState` and passes it down as a required prop. The form emits `startOAuth(clientId, scopes)`, `cancelOAuth()`, `revokeOAuth()` — the parent handles all API calls and flow management.
+- **Countdown timer in form component:** A module-level `setInterval` (not reactive) ticks `now` ref every second in `onMounted`, cleaned up in `onUnmounted`. The `timeRemaining` computed uses `props.oauthState.expiresAt - now.value` for display. Uses format `${mins}m ${secs}s`.
+- **OAuth polling in `mcp.vue`:** Module-level `oauthPollTimer` (not a ref) set with `setInterval` at 5000ms. Polling stops on `complete`, `expired`, `denied`. Polling is also stopped in `selectServer()` (server switch), `deleteServer()`, `handleCancelOAuth()`, and `onUnmounted()`.
+- **Custom headers visibility:** Auth method `'none'` keeps the existing custom headers section visible (backward compatible). `'bearer-token'` also shows headers. `'github-oauth'` replaces the headers section with the OAuth UI panel. The `handleSave` and `handleConnect` in mcp.vue skip custom headers when `authMethod === 'github-oauth'`.
+- **Test mock update:** `McpPage.test.ts` mock of `useApi` must include `startMcpOAuth`, `pollMcpOAuth`, `revokeMcpOAuth` to avoid `undefined` calls in the page component.
+- **UnoCSS/no style sections:** Neither `McpConnectionForm.vue` nor `mcp.vue` have `<style>` sections — all styling via Tailwind utility classes in the template. Custom class names like `transport-option`, `connect-button` are semantic but unstyled (works fine for functionality + tests).
+
+
+
 ### 2025-07-18: Phase B MCP Component Decomposition (224/224 tests GREEN)
 - **File structure:** All MCP sub-components live in `src/ui/app/components/mcp/` (McpServerList, McpConnectionForm, McpToolPanel, McpResourcePanel, McpPromptPanel, McpRpcHistory). `KeyValueEditor.vue` lives in `src/ui/app/components/` (general-purpose, not MCP-specific).
 - **Shared composables:** `composables/useMcpHelpers.ts` exports `ConnectionState`, `McpFormData`, `buildEnvObject()`, `buildHeadersObject()`, `parseKeyValueJson()`. `composables/useMcpRpcHistory.ts` uses module-level singleton refs so all panels share one history list without Pinia.

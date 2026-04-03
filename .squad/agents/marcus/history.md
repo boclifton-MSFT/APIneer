@@ -9,7 +9,18 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
-### MCP Custom Headers Wire-Through (Brady's request)
+### Phase 2+3: MCP OAuth Device Code Flow + Token Storage (Brady's request)
+- **New file:** `src/api/APIneer.Api/Auth/GitHubDeviceCodeAuth.cs` — implements GitHub OAuth 2.0 Device Authorization Grant (RFC 8628). Primary constructor, `IHttpClientFactory`, `ILogger`. Returns `DeviceCodeResponse` record and `TokenPollResult` record.
+- **New endpoints:** `POST /api/mcp/oauth/start`, `GET /api/mcp/oauth/status/{flowId}`, `DELETE /api/mcp/oauth/token/{serverId}`.
+- **In-memory flow tracking:** `ConcurrentDictionary<Guid, OAuthFlowState>` declared as a captured local variable in Program.cs (closure pattern, not DI). `OAuthFlowState` is a mutable class (not record) because `Interval` and `Status` change during polling.
+- **Background polling:** `Task.Run` with `CancellationTokenSource`; uses `IServiceScopeFactory` injected into the endpoint to create a scoped `AppDbContext` + `ICredentialProtector` for token persistence. Handles `slow_down` (+5s interval), `expired_token`, `access_denied`, `authorization_pending`.
+- **Token storage:** `McpServerConfig.OAuthAccessToken` is `byte[]?` (not `string?`) — consistent with `CredentialProtector.Encrypt()` returning `byte[]` and `Decrypt()` taking `byte[]`. Plan doc had the wrong type.
+- **Auto-injection:** `/api/mcp/connect` now injects `ICredentialProtector protector` as parameter (was missing) and decrypts+injects the stored OAuth token as `Authorization: Bearer <token>` before calling `CreateTransport`.
+- **Migration:** `AddOAuthTokenFields` added 4 columns to `McpServerConfigs`: `OAuthAccessToken` (BLOB), `OAuthTokenExpiresAt` (TEXT nullable), `OAuthScopes` (TEXT nullable), `OAuthProvider` (TEXT nullable).
+- **DI:** `GitHubDeviceCodeAuth` registered as singleton. `IHttpClientFactory` was already registered via `AddHttpClient`.
+- **Tests:** All 443 existing tests pass, 0 regressions.
+
+
 - **Bug:** `POST /api/mcp/connect` parsed custom headers from both `McpConnectDto` and saved `McpServerConfig.Headers` into a `headers` local variable, but called `mgr.CreateTransport(transportType, command, args, envVars, url)` without passing `headers` — the parameter defaulted to `null`.
 - **Fix:** Single-character change — added `, headers` to the `CreateTransport` call at `Program.cs:1716`.
 - **`McpConnectionManager.CreateTransport()`** already had `Dictionary<string,string>? headers = null` as its last parameter and already forwarded it to `HttpMcpTransport`. No changes needed there.

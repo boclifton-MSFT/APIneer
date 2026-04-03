@@ -9,6 +9,7 @@ using APIneer.Api.WebSocket;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.IO.Compression;
 using System.Text;
@@ -46,6 +47,9 @@ builder.Services.AddSingleton<WebSocketProxy>();
 
 // MCP connection manager — singleton managing all MCP server connections
 builder.Services.AddSingleton<McpConnectionManager>();
+
+// GitHub device code OAuth service — singleton for MCP OAuth flows
+builder.Services.AddSingleton<GitHubDeviceCodeAuth>();
 
 // Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -89,6 +93,9 @@ builder.Services.AddHttpClient("ProxyEngine", client =>
 });
 
 var app = builder.Build();
+
+// In-memory tracking of active OAuth device code flows
+var oauthFlows = new ConcurrentDictionary<Guid, OAuthFlowState>();
 
 // Auto-apply migrations on startup and seed default data
 using (var scope = app.Services.CreateScope())
@@ -1653,7 +1660,7 @@ app.MapDelete("/api/mcp/servers/{id:guid}", async (Guid id, AppDbContext db) =>
 }).WithTags("MCP");
 
 // Connect to a server
-app.MapPost("/api/mcp/connect", async (McpConnectionManager mgr, AppDbContext db, McpConnectDto dto) =>
+app.MapPost("/api/mcp/connect", async (McpConnectionManager mgr, AppDbContext db, ICredentialProtector protector, McpConnectDto dto) =>
 {
     string transportType;
     string? command = null, url = null;
@@ -1686,6 +1693,18 @@ app.MapPost("/api/mcp/connect", async (McpConnectionManager mgr, AppDbContext db
         {
             try { headers = JsonSerializer.Deserialize<Dictionary<string, string>>(config.Headers); }
             catch { /* ignore */ }
+        }
+
+        // Auto-inject stored OAuth token so the user just clicks Connect
+        if (config.OAuthAccessToken is not null)
+        {
+            try
+            {
+                var token = protector.Decrypt(config.OAuthAccessToken);
+                headers ??= new Dictionary<string, string>();
+                headers["Authorization"] = $"Bearer {token}";
+            }
+            catch { /* ignore decryption errors — connect without token */ }
         }
     }
     else if (dto.TransportType is not null)
@@ -1745,6 +1764,154 @@ app.MapPost("/api/mcp/disconnect", async (McpConnectionManager mgr, McpConnectio
     var removed = await mgr.RemoveConnectionAsync(dto.ConnectionId.Value);
     if (!removed) return Results.NotFound(new { error = "Connection not found." });
     return Results.Ok(new { status = "disconnected" });
+}).WithTags("MCP");
+
+// ─── MCP OAuth endpoints ────────────────────────────────────────
+
+// Start GitHub device code flow — returns user code for display
+app.MapPost("/api/mcp/oauth/start", async (
+    GitHubDeviceCodeAuth oauthService,
+    IServiceScopeFactory scopeFactory,
+    ILogger<Program> logger,
+    McpOAuthStartDto dto) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.ClientId))
+        return Results.BadRequest(new { error = "clientId is required." });
+    if (!dto.ServerId.HasValue)
+        return Results.BadRequest(new { error = "serverId is required." });
+
+    DeviceCodeResponse deviceCode;
+    try
+    {
+        deviceCode = await oauthService.StartDeviceFlowAsync(dto.ClientId, dto.Scopes);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to start GitHub device flow for server {ServerId}", dto.ServerId);
+        return Results.Json(new { error = $"Failed to start OAuth flow: {ex.Message}" }, statusCode: 502);
+    }
+
+    var flowId = Guid.NewGuid();
+    var cts = new CancellationTokenSource();
+    var flow = new OAuthFlowState
+    {
+        ServerId = dto.ServerId.Value,
+        ClientId = dto.ClientId,
+        DeviceCode = deviceCode.DeviceCode,
+        Interval = deviceCode.Interval,
+        ExpiresAt = DateTime.UtcNow.AddSeconds(deviceCode.ExpiresIn),
+        Status = "pending",
+        Cts = cts
+    };
+    oauthFlows[flowId] = flow;
+
+    // Background polling task — polls GitHub and stores token on success
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(flow.Interval), cts.Token);
+
+                TokenPollResult result;
+                try
+                {
+                    result = await oauthService.PollForTokenAsync(flow.ClientId, flow.DeviceCode);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "OAuth poll error for flow {FlowId}", flowId);
+                    break;
+                }
+
+                if (result.Status == "slow_down")
+                {
+                    flow.Interval += 5;
+                    continue;
+                }
+
+                if (result.Status == "pending")
+                    continue;
+
+                if (result.Status == "complete" && result.AccessToken is not null)
+                {
+                    // Encrypt and persist the token
+                    try
+                    {
+                        using var scope = scopeFactory.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var protector = scope.ServiceProvider.GetRequiredService<ICredentialProtector>();
+
+                        var config = await db.McpServerConfigs.FindAsync(flow.ServerId);
+                        if (config is not null)
+                        {
+                            config.OAuthAccessToken = protector.Encrypt(result.AccessToken);
+                            config.OAuthScopes = result.Scope;
+                            config.OAuthProvider = "github";
+                            config.OAuthTokenExpiresAt = null; // GitHub device tokens don't expire by default
+                            config.UpdatedAt = DateTime.UtcNow;
+                            await db.SaveChangesAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Failed to persist OAuth token for flow {FlowId}", flowId);
+                    }
+
+                    flow.Status = "complete";
+                    break;
+                }
+
+                // expired, denied, or other terminal state
+                flow.Status = result.Status;
+                break;
+            }
+        }
+        catch (OperationCanceledException) { /* flow was cancelled */ }
+        finally
+        {
+            // Clean up flow after expiry + 60s buffer
+            var cleanup = flow.ExpiresAt.AddSeconds(60) - DateTime.UtcNow;
+            if (cleanup > TimeSpan.Zero)
+                await Task.Delay(cleanup);
+            oauthFlows.TryRemove(flowId, out _);
+            cts.Dispose();
+        }
+    }, cts.Token);
+
+    return Results.Ok(new
+    {
+        flowId,
+        userCode = deviceCode.UserCode,
+        verificationUri = deviceCode.VerificationUri,
+        expiresIn = deviceCode.ExpiresIn
+    });
+}).WithTags("MCP");
+
+// Poll OAuth flow status — frontend calls this every ~5s
+app.MapGet("/api/mcp/oauth/status/{flowId:guid}", (Guid flowId) =>
+{
+    if (!oauthFlows.TryGetValue(flowId, out var flow))
+        return Results.NotFound(new { error = "Flow not found or expired." });
+
+    return Results.Ok(new { status = flow.Status });
+}).WithTags("MCP");
+
+// Clear stored OAuth token for a server (logout / revoke)
+app.MapDelete("/api/mcp/oauth/token/{serverId:guid}", async (Guid serverId, AppDbContext db) =>
+{
+    var config = await db.McpServerConfigs.FindAsync(serverId);
+    if (config is null) return Results.NotFound(new { error = "Server config not found." });
+
+    config.OAuthAccessToken = null;
+    config.OAuthScopes = null;
+    config.OAuthProvider = null;
+    config.OAuthTokenExpiresAt = null;
+    config.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
 }).WithTags("MCP");
 
 // Get connection status
@@ -2172,6 +2339,21 @@ record McpConnectionIdDto(Guid? ConnectionId);
 record McpToolCallDto(Guid? ConnectionId, string? Name, object? Arguments);
 record McpResourceReadDto(Guid? ConnectionId, string? Uri);
 record McpPromptGetDto(Guid? ConnectionId, string? Name, object? Arguments);
+
+// MCP OAuth DTOs
+record McpOAuthStartDto(Guid? ServerId, string? ClientId, string? Scopes);
+
+/// <summary>Tracks the state of an in-progress GitHub device code OAuth flow.</summary>
+class OAuthFlowState
+{
+    public Guid ServerId { get; init; }
+    public string ClientId { get; init; } = "";
+    public string DeviceCode { get; init; } = "";
+    public int Interval { get; set; }
+    public DateTime ExpiresAt { get; init; }
+    public string Status { get; set; } = "pending"; // "pending", "complete", "expired", "denied"
+    public CancellationTokenSource Cts { get; init; } = new();
+}
 
 /// <summary>
 /// Enables WebApplicationFactory access from the test project.

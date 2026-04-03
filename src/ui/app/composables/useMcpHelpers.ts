@@ -1,4 +1,15 @@
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected'
+export type AuthMethod = 'none' | 'bearer-token' | 'github-oauth'
+export type OAuthFlowStatus = 'idle' | 'pending' | 'complete' | 'expired' | 'denied' | 'error'
+
+export interface OAuthUIState {
+  status: OAuthFlowStatus
+  userCode?: string
+  verificationUri?: string
+  /** ms timestamp: Date.now() + expiresIn * 1000 */
+  expiresAt?: number
+  errorMessage?: string
+}
 
 export interface McpFormData {
   name: string
@@ -8,6 +19,9 @@ export interface McpFormData {
   url: string
   envVars: { key: string; value: string }[]
   customHeaders: { key: string; value: string }[]
+  authMethod: AuthMethod
+  oauthClientId: string
+  oauthScopes: string
 }
 
 export function buildEnvObject(

@@ -12,4 +12,10 @@ public class McpServerConfig
     public string? Url { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    // OAuth token storage — token is encrypted with CredentialProtector (DPAPI)
+    public byte[]? OAuthAccessToken { get; set; }
+    public DateTime? OAuthTokenExpiresAt { get; set; }
+    public string? OAuthScopes { get; set; }
+    public string? OAuthProvider { get; set; } // e.g., "github"
 }

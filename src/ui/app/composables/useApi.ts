@@ -104,6 +104,18 @@ export interface McpPrompt {
   arguments?: any[]
 }
 
+export interface McpOAuthStartResponse {
+  flowId: string
+  userCode: string
+  verificationUri: string
+  expiresIn: number
+}
+
+export interface McpOAuthStatusResponse {
+  status: 'pending' | 'complete' | 'expired' | 'denied'
+  error?: string
+}
+
 /**
  * Composable for making API calls to the APIneer backend.
  * All routes are proxied through Nuxt's routeRules to localhost:5000.
@@ -368,6 +380,22 @@ export function useApi() {
     return await $fetch<void>(`/api/mcp/connections/${connectionId}/ping`, { method: 'POST' })
   }
 
+  // MCP OAuth
+  async function startMcpOAuth(serverId: string, clientId: string, scopes?: string): Promise<McpOAuthStartResponse> {
+    return await $fetch<McpOAuthStartResponse>('/api/mcp/oauth/start', {
+      method: 'POST',
+      body: { serverId, clientId, scopes }
+    })
+  }
+
+  async function pollMcpOAuth(flowId: string): Promise<McpOAuthStatusResponse> {
+    return await $fetch<McpOAuthStatusResponse>(`/api/mcp/oauth/status/${flowId}`)
+  }
+
+  async function revokeMcpOAuth(serverId: string): Promise<void> {
+    await $fetch(`/api/mcp/oauth/token/${serverId}`, { method: 'DELETE' })
+  }
+
   return {
     // Requests
     getRequests,
@@ -413,6 +441,10 @@ export function useApi() {
     mcpReadResource,
     mcpListPrompts,
     mcpGetPrompt,
-    mcpPing
+    mcpPing,
+    // MCP OAuth
+    startMcpOAuth,
+    pollMcpOAuth,
+    revokeMcpOAuth
   }
 }
