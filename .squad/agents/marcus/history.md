@@ -9,6 +9,13 @@
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
+### MCP Custom Headers Wire-Through (Brady's request)
+- **Bug:** `POST /api/mcp/connect` parsed custom headers from both `McpConnectDto` and saved `McpServerConfig.Headers` into a `headers` local variable, but called `mgr.CreateTransport(transportType, command, args, envVars, url)` without passing `headers` — the parameter defaulted to `null`.
+- **Fix:** Single-character change — added `, headers` to the `CreateTransport` call at `Program.cs:1716`.
+- **`McpConnectionManager.CreateTransport()`** already had `Dictionary<string,string>? headers = null` as its last parameter and already forwarded it to `HttpMcpTransport`. No changes needed there.
+- **`HttpMcpTransport`** already accepts and injects custom headers on every request (POST, notification, and DELETE session termination). Fully functional once wired.
+- **Impact:** PAT-based auth (`Authorization: Bearer <token>`) and any other custom headers now flow through to Streamable HTTP MCP servers.
+
 ### Arthur's C# Optimization Pass (12 items)
 - **Static `JsonSerializerOptions`:** Shared `Program.CaseInsensitiveJsonOptions` in `partial class Program`. Avoids per-request allocation.
 - **`FrozenSet<string>`:** Validation sets (`ValidHttpMethods`, `ValidCodeLanguages`, `ValidExportFormats`, `ValidTransportTypes`) moved to `partial class Program` as `FrozenSet<string>` with appropriate comparers. Requires `using System.Collections.Frozen;`.

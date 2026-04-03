@@ -1713,7 +1713,7 @@ app.MapPost("/api/mcp/connect", async (McpConnectionManager mgr, AppDbContext db
 
     try
     {
-        var transport = mgr.CreateTransport(transportType, command, args, envVars, url);
+        var transport = mgr.CreateTransport(transportType, command, args, envVars, url, headers);
         var connection = mgr.CreateConnection();
         connection.ServerConfigId = serverConfigId;
         await connection.ConnectAsync(transport);
