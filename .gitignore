@@ -18,8 +18,12 @@ node_modules/
 .output/
 dist/
 
-# Data
-data/
+# Data (runtime SQLite db location only — anchored to repo root)
+/data/
+# Local SQLite database files (in case they land elsewhere)
+*.db
+*.db-shm
+*.db-wal
 
 # Environment
 .env
