@@ -292,14 +292,14 @@ export function useApi() {
   async function moveRequest(requestId: string, target: { collectionId: string; folderId?: string | null }) {
     return await $fetch(`/api/requests/${requestId}/move`, {
       method: 'PATCH',
-      body: target
+      body: { collectionId: target.collectionId, folderId: target.folderId ?? null }
     })
   }
 
-  async function reorderCollection(collectionId: string, items: { id: string; sortOrder: number }[]) {
+  async function reorderCollection(collectionId: string, itemIds: string[]) {
     return await $fetch(`/api/collections/${collectionId}/reorder`, {
       method: 'PATCH',
-      body: { items }
+      body: { itemIds }
     })
   }
 

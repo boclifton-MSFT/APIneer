@@ -19,7 +19,8 @@ const selectedRequestId = ref<string | null>(null)
 const selectedCollectionId = ref<string | null>(null)
 const selectedRequest = ref<ApiRequestType | null>(null)
 const response = ref<ApiResponse | null>(null)
-const loading = ref(false)
+const loading = ref(true)
+const loadingCollections = ref(true)
 const sending = ref(false)
 
 // Create collection modal
@@ -75,6 +76,7 @@ async function loadRequests() {
 
 // Load collections
 async function loadCollections() {
+  loadingCollections.value = true
   try {
     collections.value = await api.getCollections()
     if (collections.value.length > 0 && !selectedCollectionId.value) {
@@ -82,6 +84,8 @@ async function loadCollections() {
     }
   } catch {
     collections.value = []
+  } finally {
+    loadingCollections.value = false
   }
 }
 
@@ -185,6 +189,29 @@ async function renameCollection(payload: { collectionId: string, name: string })
   }
 }
 
+// Reorder requests within a collection/folder
+async function handleReorder(payload: { collectionId: string, folderId: string | null, requestIds: string[] }) {
+  try {
+    await api.reorderCollection(payload.collectionId, payload.requestIds)
+    await loadCollections()
+  } catch {
+    toast.add({ title: 'Failed to reorder requests', color: 'error' })
+  }
+}
+
+// Move a request to a different collection/folder
+async function handleMoveRequest(payload: { requestId: string, targetCollectionId: string, targetFolderId: string | null }) {
+  try {
+    await api.moveRequest(payload.requestId, {
+      collectionId: payload.targetCollectionId,
+      folderId: payload.targetFolderId
+    })
+    await loadCollections()
+  } catch {
+    toast.add({ title: 'Failed to move request', color: 'error' })
+  }
+}
+
 const hasRequests = computed(() => requests.value.length > 0)
 
 // Load on mount
@@ -195,76 +222,94 @@ onMounted(() => {
 </script>
 
 <template>
-  <UDashboardPanel id="request-list" :resizable="true" class="min-w-64 max-w-sm">
+  <UDashboardPanel id="request-list"
+                   :resizable="true"
+                   class="min-w-64 max-w-sm">
     <template #header>
       <UDashboardNavbar title="Requests">
         <template #right>
-          <UButton
-            icon="i-lucide-plus"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            aria-label="New Request"
-            @click="createNewRequest()"
-          />
+          <UButton icon="i-lucide-plus"
+                   size="xs"
+                   variant="ghost"
+                   color="neutral"
+                   aria-label="New Request"
+                   @click="createNewRequest()" />
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
-      <div v-if="loading" class="flex items-center justify-center p-8">
-        <UIcon name="i-lucide-loader-2" class="size-5 animate-spin text-muted" />
+      <div v-if="loading || loadingCollections"
+           class="flex flex-col gap-3 p-4"
+           role="status"
+           aria-label="Loading requests">
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <UIcon name="i-lucide-loader-2"
+                 class="size-4 animate-spin" />
+          <span>Loading requests…</span>
+        </div>
+        <div v-for="i in 4"
+             :key="i"
+             class="flex flex-col gap-2">
+          <USkeleton class="h-5 w-3/4" />
+          <USkeleton class="h-4 w-5/6 ml-4" />
+          <USkeleton class="h-4 w-2/3 ml-4" />
+        </div>
       </div>
-      <CollectionSidebar
-        v-else
-        :collections="collections"
-        :active-request-id="selectedRequestId || undefined"
-        :selected-collection-id="selectedCollectionId || undefined"
-        @select-request="selectRequest"
-        @new-request="createNewRequest"
-        @new-collection="showCreateCollectionModal = true"
-        @rename-request="renameRequest"
-        @rename-collection="renameCollection"
-        @delete-request="onDeleteRequest"
-      />
+      <CollectionSidebar v-else
+                         :collections="collections"
+                         :active-request-id="selectedRequestId || undefined"
+                         :selected-collection-id="selectedCollectionId || undefined"
+                         @select-request="selectRequest"
+                         @new-request="createNewRequest"
+                         @new-collection="showCreateCollectionModal = true"
+                         @rename-request="renameRequest"
+                         @rename-collection="renameCollection"
+                         @delete-request="onDeleteRequest"
+                         @reorder="handleReorder"
+                         @move-request="handleMoveRequest" />
     </template>
   </UDashboardPanel>
 
-  <UDashboardPanel id="request-detail" class="hidden lg:flex">
+  <UDashboardPanel id="request-detail"
+                   class="hidden lg:flex">
     <template #header>
       <UDashboardNavbar :title="selectedRequest?.name || 'API Request'">
         <template #right>
           <div class="flex items-center gap-2">
             <UKbd value="meta" />
-            <UKbd value="K" class="ml-0.5" />
+            <UKbd value="K"
+                  class="ml-0.5" />
           </div>
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
-      <div v-if="!selectedRequest" class="flex flex-col items-center justify-center h-full gap-4">
-        <div class="flex items-center justify-center size-16 rounded-xl bg-primary/10">
-          <UIcon name="i-lucide-send" class="size-8 text-primary" />
+      <div v-if="!selectedRequest"
+           class="flex flex-col items-center justify-center h-full gap-4">
+        <div
+             class="flex items-center justify-center size-16 rounded-xl bg-primary/10">
+          <UIcon name="i-lucide-send"
+                 class="size-8 text-primary" />
         </div>
         <div class="text-center">
-          <h2 class="text-lg font-semibold text-highlighted">Select or create a request</h2>
-          <p class="text-sm text-muted mt-1">Choose a request from the sidebar, or create a new one.</p>
+          <h2 class="text-lg font-semibold text-highlighted">Select or create a
+            request</h2>
+          <p class="text-sm text-muted mt-1">Choose a request from the sidebar,
+            or create a new one.</p>
         </div>
-        <UButton
-          label="New Request"
-          icon="i-lucide-plus"
-          size="lg"
-          @click="createNewRequest"
-        />
+        <UButton label="New Request"
+                 icon="i-lucide-plus"
+                 size="lg"
+                 @click="createNewRequest" />
       </div>
 
-      <div v-else class="flex flex-col gap-6 p-4">
-        <RequestBuilder
-          :request="selectedRequest"
-          :loading="sending"
-          @send="handleSend"
-        />
+      <div v-else
+           class="flex flex-col gap-6 p-4">
+        <RequestBuilder :request="selectedRequest"
+                        :loading="sending"
+                        @send="handleSend" />
 
         <USeparator />
 
@@ -274,28 +319,41 @@ onMounted(() => {
   </UDashboardPanel>
 
   <!-- Create Collection Modal -->
-  <UModal v-model:open="showCreateCollectionModal" title="New Collection" description="Create a new collection to organize your requests.">
+  <UModal v-model:open="showCreateCollectionModal"
+          title="New Collection"
+          description="Create a new collection to organize your requests.">
     <template #body>
-      <UInput v-model="newCollectionName" placeholder="Collection name" autofocus />
+      <UInput v-model="newCollectionName"
+              placeholder="Collection name"
+              autofocus />
     </template>
     <template #footer>
       <div class="flex justify-end gap-2">
-        <UButton variant="ghost" label="Cancel" @click="showCreateCollectionModal = false" />
-        <UButton label="Create" :disabled="!newCollectionName.trim()" @click="createCollection" />
+        <UButton variant="ghost"
+                 label="Cancel"
+                 @click="showCreateCollectionModal = false" />
+        <UButton label="Create"
+                 :disabled="!newCollectionName.trim()"
+                 @click="createCollection" />
       </div>
     </template>
   </UModal>
 
   <!-- Delete Request Confirmation Modal -->
-  <UModal v-model:open="showDeleteRequestModal" title="Delete Request" description="This action cannot be undone.">
+  <UModal v-model:open="showDeleteRequestModal"
+          title="Delete Request">
     <template #body>
       <p class="text-sm">Delete '{{ deleteTarget?.requestName }}'?</p>
       <p class="text-sm text-muted mt-1">This action cannot be undone.</p>
     </template>
     <template #footer>
       <div class="flex justify-end gap-2">
-        <UButton variant="ghost" label="Cancel" @click="cancelDeleteRequest" />
-        <UButton color="error" label="Delete" @click="confirmDeleteRequest" />
+        <UButton variant="ghost"
+                 label="Cancel"
+                 @click="cancelDeleteRequest" />
+        <UButton color="error"
+                 label="Delete"
+                 @click="confirmDeleteRequest" />
       </div>
     </template>
   </UModal>

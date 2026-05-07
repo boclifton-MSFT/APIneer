@@ -1141,6 +1141,30 @@ app.MapPatch("/api/requests/{id:guid}/move", async (Guid id, AppDbContext db, Mo
     var request = await db.ApiRequests.FindAsync(id);
     if (request is null) return Results.NotFound();
 
+    // Resolve target collection: explicit, else infer from target folder, else keep current
+    Guid targetCollectionId = request.CollectionId;
+    if (dto.CollectionId is { } cid && cid != Guid.Empty)
+    {
+        var targetCollection = await db.Collections.FindAsync(cid);
+        if (targetCollection is null) return Results.BadRequest(new { error = "Target collection not found." });
+        targetCollectionId = cid;
+    }
+    else if (dto.FolderId is { } fid)
+    {
+        var targetFolder = await db.CollectionFolders.FindAsync(fid);
+        if (targetFolder is null) return Results.BadRequest(new { error = "Target folder not found." });
+        targetCollectionId = targetFolder.CollectionId;
+    }
+
+    // Validate folder belongs to the resolved collection
+    if (dto.FolderId is { } folderId)
+    {
+        var folder = await db.CollectionFolders.FindAsync(folderId);
+        if (folder is null || folder.CollectionId != targetCollectionId)
+            return Results.BadRequest(new { error = "Folder does not belong to the target collection." });
+    }
+
+    request.CollectionId = targetCollectionId;
     request.FolderId = dto.FolderId;
     request.UpdatedAt = DateTime.UtcNow;
 
@@ -2291,7 +2315,7 @@ record CreateWorkspaceDto(string Name);
 record CreateCollectionDto(string? Name, string? Description, Guid WorkspaceId, string? AuthConfig);
 record UpdateCollectionDto(string? Name, string? Description, string? AuthConfig);
 record CreateFolderDto(string? Name, Guid? ParentFolderId);
-record MoveRequestDto(Guid? FolderId);
+record MoveRequestDto(Guid? CollectionId, Guid? FolderId);
 record ReorderDto(Guid[] ItemIds);
 
 record CreateRequestDto(
