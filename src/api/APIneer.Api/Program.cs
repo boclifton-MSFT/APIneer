@@ -101,7 +101,7 @@ var oauthFlows = new ConcurrentDictionary<Guid, OAuthFlowState>();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
 
     // Seed a default workspace and collection so requests can be created immediately
     if (!db.Workspaces.Any())
@@ -971,7 +971,7 @@ app.MapPost("/api/environments/{id:guid}/variables", async (Guid id, AppDbContex
 
     var now = DateTime.UtcNow;
     string encryptedValue = dto.Value;
-    
+
     // Encrypt secret values before storage
     if (dto.IsSecret)
     {
@@ -987,7 +987,7 @@ app.MapPost("/api/environments/{id:guid}/variables", async (Guid id, AppDbContex
             return Results.BadRequest(new { error = "Failed to encrypt secret value" });
         }
     }
-    
+
     var variable = new EnvironmentVariable
     {
         Id = Guid.NewGuid(),
@@ -1100,7 +1100,7 @@ app.MapPost("/api/environments/resolve", async (AppDbContext db, ICredentialProt
         .FirstOrDefaultAsync(e => e.IsActive);
 
     var variables = new Dictionary<string, string>();
-    
+
     if (activeEnv?.Variables != null)
     {
         foreach (var v in activeEnv.Variables)
